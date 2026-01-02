@@ -61,7 +61,7 @@ const uploadImage = async (req, res) => {
     }
 
     // Generate public URL
-    const baseUrl = env.BASE_URL || `http://localhost:${env.PORT}`;
+    const baseUrl = env.BASE_URL;
     const imageUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
 
     res.status(200).json({
@@ -93,7 +93,7 @@ const uploadMultipleImages = async (req, res) => {
     }
 
     // Generate public URLs
-    const baseUrl = env.BASE_URL || `http://localhost:${env.PORT}`;
+    const baseUrl = env.BASE_URL;
     const imageUrls = req.files.map(
       (file) => `${baseUrl}/uploads/images/${file.filename}`
     );
@@ -125,4 +125,3 @@ module.exports = {
   uploadImage,
   uploadMultipleImages,
 };
-

@@ -16,7 +16,7 @@ connectDB();
 // Middleware - CORS should be before other middleware
 app.use(
   cors({
-    origin: "http://localhost:8080",
+    origin: "https://daily-report-frontend-s4tq.onrender.com",
     credentials: true,
   })
 );
