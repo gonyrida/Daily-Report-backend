@@ -7,7 +7,7 @@
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test": "jest",
-    "build": "echo 'Build complete'"
+    "build": "npm install && echo 'Build complete'"
   },
   "keywords": [
     "backend",
