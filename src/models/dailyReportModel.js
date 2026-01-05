@@ -14,6 +14,12 @@ const ResourceSchema = new mongoose.Schema(
 
 const dailyReportSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
     projectName: {
       type: String,
       required: true,
