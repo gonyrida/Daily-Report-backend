@@ -12,6 +12,9 @@ env/
 # Environment variables
 .env
 .env.local
+config/env.js
+python-excel/.env
+
 
 # Uploads
 uploads/

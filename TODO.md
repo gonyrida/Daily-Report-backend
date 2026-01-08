@@ -1,25 +1,24 @@
-# Rolling Total System Fixes for Multi-Browser Concurrency
+# TODO: Implement Clickable Logos for Report Replacement
 
-## Backend Fixes
+## Frontend Changes
 
-- [x] Add userId to dailyReportModel for unique constraints
-- [x] Implement database transactions in dailyReportService
-- [x] Create recalculateRollingTotals function that derives Prev from last Accumulate
-- [x] Implement forward recalculation when past dates are edited
-- [x] Modify saveOrUpdateReport to use minimal frontend data (only today values)
-- [x] Add atomic operations to prevent race conditions
+- [ ] Modify ReportHeader.tsx to make logos clickable
+- [ ] Add hidden file input for logo selection
+- [ ] Handle file selection: read as base64, store in localStorage, update img src
+- [ ] Load custom logos from localStorage on component mount
 
-## Frontend Fixes
+## Backend Changes
 
-- [ ] Remove accumulated calculation logic from ResourceTable.tsx
-- [ ] Make accumulated field read-only in UI
-- [ ] Implement debounced auto-save on resource changes
-- [ ] Modify frontend to send only today/date/description data
-- [ ] Update data loading to handle backend-calculated prev/accumulated
+- [ ] Modify fill_report_header in report.py to insert custom logos if provided in data
+- [ ] Update payload structure to include cacpm_logo and koica_logo as base64 data URLs
+
+## Integration Changes
+
+- [ ] Modify reportsApi.ts to include custom logos in payload when generating reports
+- [ ] Ensure logos persist across report generations and date changes
 
 ## Testing
 
-- [ ] Test with two browsers logged in as same user
-- [ ] Test simultaneous edits on same and different dates
-- [ ] Test editing past dates and verify forward recalculations
-- [ ] Test page refresh and reconnect scenarios
+- [ ] Test logo upload and replacement
+- [ ] Test persistence across reloads
+- [ ] Test report generation with custom logos
