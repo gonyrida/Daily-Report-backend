@@ -153,10 +153,17 @@ exports.login = async (req, res) => {
     // Generate token
     const token = generateToken(user);
 
+    // Set HTTP-only cookie with the token
+    res.cookie("token", token, {
+      httpOnly: true, // Prevents JavaScript access (XSS protection)
+      secure: process.env.NODE_ENV === "production", // HTTPS only in production
+      sameSite: "strict", // CSRF protection
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
+
     res.status(200).json({
       success: true,
       message: "Login successful",
-      token,
       user: user.toJSON(),
     });
   } catch (error) {
@@ -174,8 +181,12 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.logout = async (req, res) => {
   try {
-    // In a stateless JWT system, logout is handled client-side
-    // You can implement token blacklisting here if needed
+    // Clear the authentication cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
 
     res.status(200).json({
       success: true,
@@ -399,9 +410,9 @@ exports.forgotPassword = async (req, res) => {
     res.status(200).json({
       success: true,
       message: "If that email exists, a reset link has been sent",
-      resetToken: process.env.NODE_ENV === "development" ? resetToken : undefined,
+      resetToken:
+        process.env.NODE_ENV === "development" ? resetToken : undefined,
     });
-
   } catch (error) {
     console.error("❌ Forgot password error:", error);
     res.status(500).json({

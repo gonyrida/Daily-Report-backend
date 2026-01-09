@@ -1,6 +1,7 @@
 import os
 from flask import Flask, request, send_file
 from flask_cors import CORS
+from middleware.auth import authenticateToken
 
 # 1. Import the Engine and the Writer
 from generators.excel.engine import generate_full_report
@@ -12,6 +13,7 @@ CORS(app)
 # --- REFACTORED ROUTES ---
 
 @app.route("/generate-report", methods=["POST"])
+@authenticateToken
 def generate_report():
     payload = request.json
     mode = payload.get('mode', 'report')
@@ -32,6 +34,7 @@ def generate_report():
     )
 
 @app.route("/generate-reference", methods=["POST"])
+@authenticateToken
 def generate_reference():
     data = request.json 
     # Use the engine with mode="reference" (it will delete the report sheet automatically)
@@ -46,6 +49,7 @@ def generate_reference():
     )
 
 @app.route("/generate-combined", methods=["POST"])
+@authenticateToken
 def generate_combined():
     data = request.json 
     # Use the engine with mode="combined" (keeps both sheets)
