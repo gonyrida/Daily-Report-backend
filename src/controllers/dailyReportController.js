@@ -1,21 +1,35 @@
 const dailyReportService = require("../services/dailyReportService");
 
-// Get all reports
+// Get all reports for authenticated user
 const getDailyReports = async (req, res) => {
   try {
-    const reports = await dailyReportService.getAllReports();
+    const userId = req.user.userId;
+    const reports = await dailyReportService.getAllReports(userId);
     res.json(reports);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Create a new report
-const createDailyReport = async (req, res) => {
+// Get a specific report by ID
+const getReportById = async (req, res) => {
   try {
-    const report = await dailyReportService.createReport(req.body);
-    res.status(201).json(report);
+    const { reportId } = req.params;
+    const userId = req.user.userId;
+    
+    console.log("DEBUG BACKEND CONTROLLER: getReportById called for:", { reportId, userId });
+    
+    const report = await dailyReportService.getReportById(userId, reportId);
+    
+    if (!report) {
+      console.log("DEBUG BACKEND CONTROLLER: Report not found");
+      return res.status(404).json({ message: "Report not found" });
+    }
+    
+    console.log("DEBUG BACKEND CONTROLLER: Report found and returned");
+    res.json(report);
   } catch (error) {
+    console.error("DEBUG BACKEND CONTROLLER: getReportById error:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -146,10 +160,148 @@ const submitReport = async (req, res) => {
   }
 };
 
+const createNewReport = async (req, res) => {
+  try {
+    const { projectName, date } = req.body;
+    const userId = req.user.userId; // Extract userId from authenticated user
+    
+    // Validate required fields
+    if (!date) {
+      return res.status(400).json({ message: "Date is required" });
+    }
+    
+    const datePart = new Date(date).toISOString().split("T")[0];
+    const normalizedDate = new Date(`${datePart}T00:00:00.000Z`);
+
+    console.log("DEBUG BACKEND CONTROLLER: Creating new report for:", {
+      userId,
+      projectName,
+      date: normalizedDate.toISOString(),
+    });
+
+    const report = await dailyReportService.createNewReport(
+      userId,
+      projectName,
+      normalizedDate
+    );
+    
+    console.log("DEBUG BACKEND CONTROLLER: New report created with ID:", report._id);
+    
+    res.status(201).json({
+      success: true,
+      data: report,
+      message: "New report created successfully",
+    });
+  } catch (error) {
+    console.error("Create New Report Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const createBlankReport = async (req, res) => {
+  try {
+    const { projectName } = req.body;
+    const userId = req.user.userId;
+    
+    console.log("DEBUG BACKEND CONTROLLER: Creating blank report for:", { userId, projectName });
+
+    const report = await dailyReportService.createBlankReport(userId, projectName);
+    
+    console.log("DEBUG BACKEND CONTROLLER: Blank report created with ID:", report._id);
+    
+    res.status(201).json({
+      success: true,
+      data: report,
+      message: "Blank report created successfully",
+    });
+  } catch (error) {
+    console.error("Create Blank Report Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Auto-save report (partial update)
+const autoSaveReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const userId = req.user.userId;
+    const partialData = req.body;
+    
+    console.log("DEBUG BACKEND CONTROLLER: Auto-saving report:", { reportId, userId });
+
+    const report = await dailyReportService.autoSaveReport(userId, reportId, partialData);
+    
+    console.log("DEBUG BACKEND CONTROLLER: Auto-save completed:", report._id);
+    
+    res.status(200).json({
+      success: true,
+      data: report,
+      message: "Report auto-saved successfully",
+    });
+  } catch (error) {
+    console.error("Auto-save Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Get recent reports for dashboard
+const getRecentReports = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { limit = 20, status } = req.query;
+    
+    console.log("DEBUG BACKEND CONTROLLER: Fetching recent reports for:", { userId, limit, status });
+
+    const reports = await dailyReportService.getRecentReports(
+      userId, 
+      parseInt(limit), 
+      status
+    );
+    
+    console.log("DEBUG BACKEND CONTROLLER: Found", reports.length, "recent reports");
+    
+    res.status(200).json({
+      success: true,
+      data: reports,
+      message: "Recent reports fetched successfully",
+    });
+  } catch (error) {
+    console.error("Get Recent Reports Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const deleteReport = async (req, res) => {
+  try {
+    const { reportId } = req.params;
+    const userId = req.user.userId;
+    
+    console.log("DEBUG BACKEND CONTROLLER: Deleting report:", { reportId, userId });
+    
+    const result = await dailyReportService.deleteReport(userId, reportId);
+    
+    if (!result) {
+      console.log("DEBUG BACKEND CONTROLLER: Report not found for deletion");
+      return res.status(404).json({ message: "Report not found" });
+    }
+    
+    console.log("DEBUG BACKEND CONTROLLER: Report deleted successfully");
+    res.status(200).json({ message: "Report deleted successfully" });
+  } catch (error) {
+    console.error("DEBUG BACKEND CONTROLLER: Delete error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getDailyReports,
-  createDailyReport,
+  getReportById,
   getReportByDate,
   saveOrUpdateReport,
   submitReport,
+  createNewReport,
+  createBlankReport,
+  autoSaveReport,
+  getRecentReports,
+  deleteReport,
 };

@@ -70,7 +70,8 @@ const dailyReportSchema = new mongoose.Schema(
 
     activityToday: {
       type: String,
-      required: true,
+      required: false,
+      default: "",
     },
 
     workPlanNextDay: {
@@ -99,8 +100,10 @@ const dailyReportSchema = new mongoose.Schema(
   }
 );
 
-// Add index for faster queries
+// Add indexes for faster queries and auto-save functionality
 dailyReportSchema.index({ projectName: 1, reportDate: 1 });
+dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
+dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
 
 const DailyReport = mongoose.model("DailyReport", dailyReportSchema);
 
