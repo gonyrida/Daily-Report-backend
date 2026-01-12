@@ -1,7 +1,9 @@
 const sendEmail = require("../utils/sendEmail");
 const User = require("../models/userModel");
 const PasswordReset = require("../models/passwordResetModel");
+const TokenBlacklist = require("../models/tokenBlacklistModel");
 const generateToken = require("../utils/generateToken");
+const generateRefreshToken = require("../utils/generateRefreshToken");
 const crypto = require("crypto");
 const env = require("../config/env");
 
@@ -83,10 +85,15 @@ exports.register = async (req, res) => {
     console.log("✅ Token generated");
 
     console.log("✅ Registration successful for:", email);
+    
+    // Set JWT cookie
+    const { setTokenCookie } = require("../middleware/authMiddleware");
+    setTokenCookie(res, token);
+    
     res.status(201).json({
       success: true,
       message: "Account created successfully",
-      token,
+      token, // Include JWT token for frontend Python API access
       user: user.toJSON(),
     });
   } catch (error) {
@@ -150,13 +157,19 @@ exports.login = async (req, res) => {
     user.lastLogin = new Date();
     await user.save();
 
-    // Generate token
+    // Generate tokens
     const token = generateToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Set JWT cookie
+    const { setTokenCookie } = require("../middleware/authMiddleware");
+    setTokenCookie(res, token);
 
     res.status(200).json({
       success: true,
       message: "Login successful",
-      token,
+      token, // Include JWT token for frontend Python API access
+      refreshToken, // Send refresh token for token renewal
       user: user.toJSON(),
     });
   } catch (error) {
@@ -169,13 +182,23 @@ exports.login = async (req, res) => {
   }
 };
 
-// @desc    Logout user (optional - mainly for client-side token removal)
+// @desc    Logout user (invalidate token)
 // @route   POST /api/auth/logout
 // @access  Private
 exports.logout = async (req, res) => {
   try {
-    // In a stateless JWT system, logout is handled client-side
-    // You can implement token blacklisting here if needed
+    // Blacklist the current token
+    if (req.token) {
+      await TokenBlacklist.create({
+        token: req.token,
+        userId: req.user.userId,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
+      });
+    }
+
+    // Clear the cookie
+    const { clearTokenCookie } = require("../middleware/authMiddleware");
+    clearTokenCookie(res);
 
     res.status(200).json({
       success: true,

@@ -12,13 +12,15 @@ const {
   submitReport,
 } = require("../controllers/dailyReportController");
 
-// Use 'authenticateToken' instead of 'authMiddleware'
+// Apply authentication to ALL routes
+router.use(authenticateToken);
+
 router.get("/", getDailyReports);
 router.post("/", createDailyReport);
-router.post("/save", authenticateToken, saveOrUpdateReport);
-router.post("/submit", authenticateToken, submitReport); 
+router.post("/save", saveOrUpdateReport);
+router.post("/submit", submitReport); 
 
-router.get("/date/:date", authenticateToken, getReportByDate);
-router.get("/project/:projectName/date/:date", authenticateToken, getReportByDate);
+router.get("/date/:date", getReportByDate);
+router.get("/project/:projectName/date/:date", getReportByDate);
 
 module.exports = router;

@@ -1,17 +1,22 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const cookieParser = require("cookie-parser");
 const connectDB = require("./config/db");
 const dailyReportRoutes = require("./routes/dailyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
+const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
 const env = require("./config/env"); // Add this line
 
 const app = express();
 
 // Connect to MongoDB
 connectDB();
+
+// Apply general rate limiting to all requests
+app.use(generalLimiter);
 
 // Middleware - CORS should be before other middleware
 app.use(
@@ -23,7 +28,13 @@ app.use(
       const allowedOrigins = [
         "https://daily-report-frontend-s4tq.onrender.com",
         "http://localhost:8080",
+        "http://10.10.20.122:8080", // Added for current development setup
         "http://localhost:3000", // In case frontend runs on different port
+        "http://localhost:5173", // Vite dev server default
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+        "http://10.10.20.122:5001",
       ];
 
       if (allowedOrigins.indexOf(origin) !== -1) {
@@ -36,24 +47,46 @@ app.use(
   })
 );
 
+// Add cookie parser middleware BEFORE routes
+app.use(cookieParser());
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Serve static files from uploads directory
+// Serve static files from uploads directory with authentication and authorization
 app.use(
   "/uploads",
+  authenticateToken,
+  (req, res, next) => {
+    // Extract userId from path: /uploads/images/{userId}/{filename}
+    const pathParts = req.path.split('/').filter(part => part);
+    if (pathParts.length >= 2 && pathParts[0] === 'images') {
+      const requestedUserId = pathParts[1];
+      
+      // SECURITY: Verify user can only access their own files
+      if (requestedUserId !== req.user.userId) {
+        return res.status(403).json({ 
+          success: false,
+          message: 'Access denied: You can only access your own files' 
+        });
+      }
+    }
+    next();
+  },
   express.static(path.join(__dirname, "../uploads"), {
     setHeaders: (res, filePath) => {
       // Set CORS headers for images
-      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Origin", process.env.FRONTEND_URL || "http://localhost:3000");
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
     },
   })
 );
 
-// Routes
-app.use("/api/auth", authRoutes);
+// Routes - ALL protected with authentication and rate limiting
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/refresh-token", authLimiter, require("./routes/refreshTokenRoutes"));
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
-app.use("/api/images", imageRoutes);
+app.use("/api/images", authenticateToken, imageRoutes); // Move exportLimiter to imageRoutes if needed
 
 // Health check route
 app.get("/", (req, res) => {

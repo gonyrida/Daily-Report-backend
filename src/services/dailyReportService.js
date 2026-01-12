@@ -59,10 +59,10 @@ const recalculateFutureReports = async (userId, futureReports, session) => {
 };
 
 /**
- * Get all reports
+ * Get all reports for a specific user
  */
-const getAllReports = async () => {
-  return await DailyReport.find().sort({ reportDate: -1 });
+const getAllReports = async (userId) => {
+  return await DailyReport.find({ userId }).sort({ reportDate: -1 });
 };
 
 /**
@@ -122,51 +122,11 @@ const getReportByDate = async (userId, reportDate, projectName = null) => {
 };
 
 /**
- * Get a report by date only (no projectName required)
- * Used when loading report for a specific date
+ * Get a report by date only (no projectName required) - DEPRECATED
+ * This function is insecure and should not be used
  */
 const getReportByDateOnly = async (reportDate) => {
-  // Create date range for the entire day
-  const inputDate = new Date(reportDate);
-
-  const startOfDay = new Date(
-    Date.UTC(
-      inputDate.getUTCFullYear(),
-      inputDate.getUTCMonth(),
-      inputDate.getUTCDate(),
-      0,
-      0,
-      0,
-      0
-    )
-  );
-
-  const endOfDay = new Date(
-    Date.UTC(
-      inputDate.getUTCFullYear(),
-      inputDate.getUTCMonth(),
-      inputDate.getUTCDate(),
-      23,
-      59,
-      59,
-      999
-    )
-  );
-
-  console.log("Searching for any report on date:", {
-    startOfDay: startOfDay.toISOString(),
-    endOfDay: endOfDay.toISOString(),
-  });
-
-  const report = await DailyReport.findOne({
-    reportDate: {
-      $gte: startOfDay,
-      $lte: endOfDay,
-    },
-  }).sort({ createdAt: -1 });
-
-  console.log("Found report:", report ? "YES" : "NO");
-  return report;
+  throw new Error("getReportByDateOnly is deprecated for security reasons. Use getReportByDate with userId instead.");
 };
 
 /**
@@ -356,9 +316,13 @@ const submitDailyReport = async (userId, projectName, reportDate) => {
 };
 
 /**
- * Create a new report with rolling totals
+ * Create a new report with rolling totals for a specific user
  */
-const createReport = async (reportData) => {
+const createReport = async (userId, reportData) => {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+  
   const { projectName, reportDate } = reportData;
 
   if (!projectName || !reportDate) {
@@ -366,7 +330,6 @@ const createReport = async (reportData) => {
   }
 
   // Normalize the incoming reportDate to UTC Midnight
-  // This prevents the "Date Shift" when saving from different timezones
   const d = new Date(reportDate);
   const normalizedDate = new Date(
     Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)
@@ -375,8 +338,8 @@ const createReport = async (reportData) => {
   // Update the reportData with the clean UTC date
   reportData.reportDate = normalizedDate;
 
-  // Fetch the previous report for the same project
-  const previousReport = await DailyReport.findOne({ projectName }).sort({
+  // Fetch the previous report for the same user and project
+  const previousReport = await DailyReport.findOne({ userId, projectName }).sort({
     reportDate: -1,
   });
 
@@ -419,6 +382,7 @@ const createReport = async (reportData) => {
 
   // Create the new report with calculated totals
   const report = new DailyReport({
+    userId,
     ...reportData,
     managementTeam,
     workingTeam,

@@ -6,7 +6,13 @@ const env = require("../config/env");
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, "../../uploads/images");
+    // Create user-specific directory
+    const userId = req.user?.userId;
+    if (!userId) {
+      return cb(new Error("User authentication required"), null);
+    }
+    
+    const uploadPath = path.join(__dirname, "../../uploads/images", userId);
     // Ensure directory exists
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
@@ -60,9 +66,18 @@ const uploadImage = async (req, res) => {
       });
     }
 
-    // Generate public URL
+    // Verify user authentication
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
+    // Generate user-specific public URL
     const baseUrl = env.BASE_URL;
-    const imageUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
+    const imageUrl = `${baseUrl}/uploads/images/${userId}/${req.file.filename}`;
 
     res.status(200).json({
       success: true,
@@ -71,6 +86,7 @@ const uploadImage = async (req, res) => {
       filename: req.file.filename,
       originalName: req.file.originalname,
       size: req.file.size,
+      userId: userId, // Include userId for frontend tracking
     });
   } catch (error) {
     console.error("Error uploading image:", error);
@@ -92,10 +108,19 @@ const uploadMultipleImages = async (req, res) => {
       });
     }
 
-    // Generate public URLs
+    // Verify user authentication
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
+    // Generate user-specific public URLs
     const baseUrl = env.BASE_URL;
     const imageUrls = req.files.map(
-      (file) => `${baseUrl}/uploads/images/${file.filename}`
+      (file) => `${baseUrl}/uploads/images/${userId}/${file.filename}`
     );
 
     res.status(200).json({
@@ -103,11 +128,12 @@ const uploadMultipleImages = async (req, res) => {
       message: "Images uploaded successfully",
       imageUrls: imageUrls,
       count: req.files.length,
+      userId: userId, // Include userId for frontend tracking
       files: req.files.map((file) => ({
         filename: file.filename,
         originalName: file.originalname,
         size: file.size,
-        url: `${baseUrl}/uploads/images/${file.filename}`,
+        url: `${baseUrl}/uploads/images/${userId}/${file.filename}`,
       })),
     });
   } catch (error) {

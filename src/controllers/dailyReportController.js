@@ -1,19 +1,19 @@
 const dailyReportService = require("../services/dailyReportService");
 
-// Get all reports
+// Get all reports for authenticated user only
 const getDailyReports = async (req, res) => {
   try {
-    const reports = await dailyReportService.getAllReports();
+    const reports = await dailyReportService.getAllReports(req.user.userId);
     res.json(reports);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 };
 
-// Create a new report
+// Create a new report for authenticated user
 const createDailyReport = async (req, res) => {
   try {
-    const report = await dailyReportService.createReport(req.body);
+    const report = await dailyReportService.createReport(req.user.userId, req.body);
     res.status(201).json(report);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -26,6 +26,15 @@ const getReportByDate = async (req, res) => {
     console.log("DEBUG BACKEND CONTROLLER: req.user:", req.user);
     console.log("DEBUG BACKEND CONTROLLER: req.params:", req.params);
     console.log("DEBUG BACKEND CONTROLLER: req.query:", req.query);
+
+    // AUTH GUARD: Ensure user is authenticated
+    if (!req.user || !req.user.userId) {
+      console.error("DEBUG BACKEND: Authentication failed - no user context");
+      return res.status(401).json({ 
+        success: false,
+        message: "Authentication required" 
+      });
+    }
 
     const { date } = req.params; // e.g., "2025-12-29"
     const { projectName } = req.params;
@@ -56,11 +65,20 @@ const getReportByDate = async (req, res) => {
       report ? "YES" : "NO"
     );
 
-    if (!report) return res.status(404).json({ message: "Report not found" });
+    if (!report) {
+      return res.status(404).json({ 
+        success: false,
+        message: "Report not found" 
+      });
+    }
+    
     res.json(report);
   } catch (error) {
     console.error("DEBUG BACKEND CONTROLLER: getReportByDate error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
   }
 };
 
@@ -69,18 +87,25 @@ const saveOrUpdateReport = async (req, res) => {
   try {
     console.log("DEBUG BACKEND CONTROLLER: Save request received");
 
+    // AUTH GUARD: Ensure user is authenticated
+    if (!req.user || !req.user.userId) {
+      console.error("DEBUG BACKEND: Authentication failed - no user context");
+      return res.status(401).json({ 
+        success: false,
+        message: "Authentication required" 
+      });
+    }
+
     const reportData = req.body;
     console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
     if (!reportData.reportDate)
-      return res.status(400).json({ message: "Date required" });
+      return res.status(400).json({ 
+        success: false,
+        message: "Date required" 
+      });
 
     // Extract userId from authenticated user
     const userId = req.user.userId;
-    if (!userId) {
-      console.error("DEBUG BACKEND: No userId found in req.user");
-      return res.status(401).json({ message: "User authentication required" });
-    }
-
     console.log("DEBUG BACKEND: Saving report for userId:", userId);
 
     // Fix date normalization to handle timezone properly
@@ -106,10 +131,17 @@ const saveOrUpdateReport = async (req, res) => {
     console.log("DEBUG BACKEND: Report saved successfully:", report._id);
     return res
       .status(200)
-      .json({ message: "Report saved successfully", data: report });
+      .json({ 
+        success: true,
+        message: "Report saved successfully", 
+        data: report 
+      });
   } catch (error) {
     console.error("DEBUG BACKEND: Save error:", error);
-    return res.status(500).json({ message: "Failed to save report" });
+    return res.status(500).json({ 
+      success: false,
+      message: "Failed to save report" 
+    });
   }
 };
 
@@ -119,6 +151,15 @@ const submitReport = async (req, res) => {
   console.log("DEBUG BACKEND CONTROLLER: Received Body ->", req.body);
 
   try {
+    // AUTH GUARD: Ensure user is authenticated
+    if (!req.user || !req.user.userId) {
+      console.error("DEBUG BACKEND: Authentication failed - no user context");
+      return res.status(401).json({ 
+        success: false,
+        message: "Authentication required" 
+      });
+    }
+
     const { projectName, date } = req.body;
     const userId = req.user.userId; // Extract userId from authenticated user
     const datePart = new Date(date).toISOString().split("T")[0];
@@ -142,7 +183,10 @@ const submitReport = async (req, res) => {
     });
   } catch (error) {
     console.error("Submit Error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      success: false,
+      error: error.message 
+    });
   }
 };
 
