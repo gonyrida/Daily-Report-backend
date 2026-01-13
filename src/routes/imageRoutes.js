@@ -5,6 +5,7 @@ const {
   upload,
   uploadImage,
   uploadMultipleImages,
+  uploadProfilePicture,
 } = require("../controllers/imageController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 
@@ -53,6 +54,15 @@ router.post(
   upload.array("images", 10), // Max 10 images
   handleMulterError,
   uploadMultipleImages
+);
+
+// Upload profile picture
+router.post(
+  "/upload-profile",
+  authenticateToken,
+  upload.single("profilePicture"),
+  handleMulterError,
+  uploadProfilePicture
 );
 
 module.exports = router;

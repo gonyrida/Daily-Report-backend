@@ -26,6 +26,10 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    profilePicture: {
+      type: String,
+      default: null,
+    },
     role: {
       type: String,
       enum: ["admin", "user"],
@@ -76,6 +80,20 @@ userSchema.methods.toJSON = function () {
   delete userObject.password;
   return userObject;
 };
+
+// Virtual for full name
+userSchema.virtual("fullName").get(function () {
+  return `${this.firstName} ${this.lastName}`;
+});
+
+// Virtual for account status
+userSchema.virtual("accountStatus").get(function () {
+  return this.isActive ? "active" : "inactive";
+});
+
+// Ensure virtual fields are included in JSON
+userSchema.set("toJSON", { virtuals: true });
+userSchema.set("toObject", { virtuals: true });
 
 // Indexes
 userSchema.index({ email: 1 }, { unique: true });
