@@ -120,8 +120,43 @@ const uploadMultipleImages = async (req, res) => {
   }
 };
 
+// Upload profile picture
+const uploadProfilePicture = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "No profile picture file provided",
+      });
+    }
+
+    // Generate public URL
+    const baseUrl = env.BASE_URL;
+    const imageUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
+
+    res.status(200).json({
+      success: true,
+      message: "Profile picture uploaded successfully",
+      data: {
+        url: imageUrl,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+      },
+    });
+  } catch (error) {
+    console.error("Error uploading profile picture:", error);
+    res.status(500).json({
+      success: false,
+      message: "Error uploading profile picture",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   upload,
   uploadImage,
   uploadMultipleImages,
+  uploadProfilePicture,
 };

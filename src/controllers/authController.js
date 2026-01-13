@@ -215,9 +215,19 @@ exports.getProfile = async (req, res) => {
       });
     }
 
+    // Return user data in the format expected by frontend
     res.status(200).json({
       success: true,
-      user: user.toJSON(),
+      data: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        accountStatus: user.accountStatus,
+        profilePicture: user.profilePicture,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -233,7 +243,7 @@ exports.getProfile = async (req, res) => {
 // @access  Private
 exports.updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName } = req.body;
+    const { fullName, profilePicture } = req.body;
     const user = await User.findById(req.user.userId);
 
     if (!user) {
@@ -243,16 +253,34 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    // Update fields
-    if (firstName) user.firstName = firstName;
-    if (lastName) user.lastName = lastName;
+    // Update fullName if provided
+    if (fullName) {
+      const nameParts = fullName.trim().split(' ');
+      user.firstName = nameParts[0] || user.firstName;
+      user.lastName = nameParts.slice(1).join(' ') || user.lastName;
+    }
+
+    // Update profilePicture if provided
+    if (profilePicture !== undefined) {
+      user.profilePicture = profilePicture;
+    }
 
     await user.save();
 
+    // Return updated user data in the format expected by frontend
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
-      user: user.toJSON(),
+      data: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        accountStatus: user.accountStatus,
+        profilePicture: user.profilePicture,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
     console.error("Update profile error:", error);
