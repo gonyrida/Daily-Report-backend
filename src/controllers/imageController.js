@@ -6,7 +6,13 @@ const env = require("../config/env");
 // Configure storage
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, "../../uploads/images");
+    // Create user-specific directory for profile pictures
+    const userId = req.user?.userId;
+    if (!userId) {
+      return cb(new Error("User authentication required"), "");
+    }
+    
+    const uploadPath = path.join(__dirname, "../../uploads/images", userId.toString());
     // Ensure directory exists
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
@@ -130,15 +136,32 @@ const uploadProfilePicture = async (req, res) => {
       });
     }
 
-    // Generate public URL
-    const baseUrl = env.BASE_URL;
-    const imageUrl = `${baseUrl}/uploads/images/${req.file.filename}`;
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "User authentication required",
+      });
+    }
+
+    // Delete old profile picture if it exists
+    const User = require("../models/userModel");
+    const user = await User.findById(userId);
+    if (user && user.profilePicture) {
+      const oldPath = path.join(__dirname, "../../uploads", user.profilePicture);
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    // Store relative path in database (not full URL)
+    const relativePath = `/images/${userId}/${req.file.filename}`;
 
     res.status(200).json({
       success: true,
       message: "Profile picture uploaded successfully",
       data: {
-        url: imageUrl,
+        path: relativePath, // Store this in database
         filename: req.file.filename,
         originalName: req.file.originalname,
         size: req.file.size,
