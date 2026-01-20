@@ -84,6 +84,29 @@ const dailyReportSchema = new mongoose.Schema(
     materials: [ResourceSchema],
     machinery: [ResourceSchema],
 
+    referenceSections: {
+      type: mongoose.Schema.Types.Mixed, // or define a proper schema
+      default: undefined,
+    },
+
+    tableTitle: {
+      type: String,
+      default: "SITE PHOTO EVIDENCE",
+    },
+
+    carSheet: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        description: "",
+        photo_groups: []
+      },
+    },
+
+    projectLogo: {
+      type: String,  // Store base64 or URL
+      default: "",
+    },
+
     status: {
       type: String,
       enum: ["draft", "submitted"],
