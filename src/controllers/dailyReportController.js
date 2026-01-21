@@ -1,4 +1,5 @@
 const dailyReportService = require("../services/dailyReportService");
+const DailyReport = require('../models/dailyReportModel');
 
 // Get all reports for authenticated user
 const getDailyReports = async (req, res) => {
@@ -59,11 +60,12 @@ const getReportByDate = async (req, res) => {
       projectNameToUse
     );
 
-    const report = await dailyReportService.getReportByDate(
-      req.user.userId,
-      normalizedDate,
-      projectNameToUse
-    );
+    // 🔒 NEW QUERY: Find most recent report for this date
+    const report = await DailyReport.findOne({ 
+      reportDate: date,
+      userId: req.user.userId 
+    }).sort({ updatedAt: -1 }); // Sort by most recent first
+    console.log("🐛 DEBUG BACKEND: findOne result:", report);
 
     console.log(
       "DEBUG BACKEND CONTROLLER: Report found:",
