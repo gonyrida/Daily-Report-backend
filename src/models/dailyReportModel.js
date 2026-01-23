@@ -80,9 +80,54 @@ const dailyReportSchema = new mongoose.Schema(
     },
 
     managementTeam: [ResourceSchema],
-    workingTeam: [ResourceSchema],
+    workingTeamInterior: [ResourceSchema],
+    workingTeamMEP: [ResourceSchema],
     materials: [ResourceSchema],
     machinery: [ResourceSchema],
+
+    // Backward compatibility for old data (optional)
+    workingTeam: [ResourceSchema],
+    interiorTeam: [ResourceSchema],
+    mepTeam: [ResourceSchema],
+
+    // New fields for combined reports
+    logos: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    hse_title: {
+      type: String,
+      default: "",
+    },
+
+    hse: [{
+      section_title: { type: String, default: "" },
+      images: [{ type: String }],
+      footers: [{ type: String }]
+    }],
+
+    site_title: {
+      type: String,
+      default: "",
+    },
+
+    site_ref: [{
+      section_title: { type: String, default: "" },
+      images: [{ type: String }],
+      footers: [{ type: String }]
+    }],
+
+    description: {
+      type: String,
+      default: "",
+    },
+
+    photo_groups: [{
+      images: [{ type: String }],
+      date: { type: String },
+      footers: [{ type: String }]
+    }],
 
     referenceSections: {
       type: mongoose.Schema.Types.Mixed, // or define a proper schema

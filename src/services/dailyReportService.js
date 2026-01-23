@@ -39,6 +39,17 @@ const recalculateFutureReports = async (userId, futureReports, session) => {
       previousReport?.managementTeam || []
     );
 
+    currentReport.workingTeamInterior = recalculateRollingTotals(
+      currentReport.workingTeamInterior || [],
+      previousReport?.workingTeamInterior || []
+    );
+
+    currentReport.workingTeamMEP = recalculateRollingTotals(
+      currentReport.workingTeamMEP || [],
+      previousReport?.workingTeamMEP || []
+    );
+
+    // Keep backward compatibility for old workingTeam
     currentReport.workingTeam = recalculateRollingTotals(
       currentReport.workingTeam || [],
       previousReport?.workingTeam || []
@@ -255,6 +266,17 @@ const saveOrUpdateReport = async (userId, reportData) => {
       previousReport?.managementTeam || []
     );
 
+    const workingTeamInterior = calculateRollingTotals(
+      reportData.workingTeamInterior || [],
+      previousReport?.workingTeamInterior || []
+    );
+
+    const workingTeamMEP = calculateRollingTotals(
+      reportData.workingTeamMEP || [],
+      previousReport?.workingTeamMEP || []
+    );
+
+    // Keep backward compatibility for old workingTeam
     const workingTeam = calculateRollingTotals(
       reportData.workingTeam || [],
       previousReport?.workingTeam || []
@@ -279,7 +301,9 @@ const saveOrUpdateReport = async (userId, reportData) => {
       report.set({
         ...reportData,
         managementTeam,
-        workingTeam,
+        workingTeamInterior,
+        workingTeamMEP,
+        workingTeam, // Keep backward compatibility
         materials,
         machinery,
         reportDate: inputDate,
@@ -293,7 +317,9 @@ const saveOrUpdateReport = async (userId, reportData) => {
         userId,
         ...reportData,
         managementTeam,
-        workingTeam,
+        workingTeamInterior,
+        workingTeamMEP,
+        workingTeam, // Keep backward compatibility
         materials,
         machinery,
         reportDate: inputDate,
@@ -406,7 +432,9 @@ const createNewReport = async (userId, projectName, reportDate) => {
       workPlanNextDay: "",
       // Resource arrays (empty by default)
       managementTeam: [],
-      workingTeam: [],
+      workingTeamInterior: [],
+      workingTeamMEP: [],
+      workingTeam: [], // Keep backward compatibility
       materials: [],
       machinery: [],
       // Optional fields for backward compatibility
@@ -522,7 +550,9 @@ const createBlankReport = async (userId, projectName = null) => {
       activityToday: "",
       workPlanNextDay: "",
       managementTeam: [],
-      workingTeam: [],
+      workingTeamInterior: [],
+      workingTeamMEP: [],
+      workingTeam: [], // Keep backward compatibility
       materials: [],
       machinery: [],
     });
