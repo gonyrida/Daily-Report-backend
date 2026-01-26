@@ -188,11 +188,12 @@ const getReportByDateOnly = async (reportDate) => {
 };
 
 /**
- * Save or update a report with rolling totals recalculation
- * Uses transactions to prevent race conditions
+ * Upsert daily report with proper update/insert logic
+ * If report exists for same project and date: update it and set lastUpdated
+ * If report doesn't exist: insert as new record
  */
-const saveOrUpdateReport = async (userId, reportData) => {
-  console.log("DEBUG BACKEND SERVICE: saveOrUpdateReport called with:", {
+const upsertDailyReport = async (userId, reportData) => {
+  console.log("DEBUG BACKEND SERVICE: upsertDailyReport called with:", {
     userId,
     projectName: reportData.projectName,
     reportDate: reportData.reportDate,
@@ -219,7 +220,7 @@ const saveOrUpdateReport = async (userId, reportData) => {
       endOfDay: endOfDay.toISOString(),
     });
 
-    // Find existing report for this user
+    // Find existing report for this user, project, and date
     let report = await DailyReport.findOne({
       userId,
       projectName,
@@ -260,6 +261,27 @@ const saveOrUpdateReport = async (userId, reportData) => {
       });
     };
 
+    // Helper function to handle text field updates
+    const updateTextField = (existingValue, newValue, strategy = 'replace') => {
+      if (strategy === 'append' && existingValue && newValue) {
+        // Avoid duplicate content when appending
+        if (existingValue.includes(newValue)) {
+          return existingValue;
+        }
+        return existingValue + '\n' + newValue;
+      }
+      return newValue !== undefined ? newValue : existingValue;
+    };
+
+    // Helper function to handle numeric field updates
+    const updateNumericField = (existingValue, newValue) => {
+      if (newValue !== undefined && newValue !== null && newValue !== '') {
+        const parsed = Number(newValue);
+        return isNaN(parsed) ? existingValue : parsed;
+      }
+      return existingValue;
+    };
+
     // Calculate rolling totals for all resource arrays
     const managementTeam = calculateRollingTotals(
       reportData.managementTeam || [],
@@ -298,7 +320,22 @@ const saveOrUpdateReport = async (userId, reportData) => {
         "DEBUG BACKEND SERVICE: Updating existing report:",
         report._id
       );
-      report.set({
+      
+      // Define field update strategies
+      const numericFields = ['tempAM', 'tempPM'];
+      
+      const textFields = [
+        { name: 'activityToday', strategy: 'append' },
+        { name: 'workPlanNextDay', strategy: 'replace' },
+        { name: 'weatherAM', strategy: 'replace' },
+        { name: 'weatherPM', strategy: 'replace' },
+        { name: 'hse_title', strategy: 'replace' },
+        { name: 'site_title', strategy: 'replace' },
+        { name: 'description', strategy: 'replace' },
+        { name: 'tableTitle', strategy: 'replace' }
+      ];
+      
+      const updateData = {
         ...reportData,
         managementTeam,
         workingTeamInterior,
@@ -307,7 +344,24 @@ const saveOrUpdateReport = async (userId, reportData) => {
         materials,
         machinery,
         reportDate: inputDate,
+        lastUpdated: new Date(), // Update timestamp
+      };
+      
+      // Apply numeric field updates
+      numericFields.forEach(field => {
+        if (reportData[field] !== undefined) {
+          updateData[field] = updateNumericField(report[field], reportData[field]);
+        }
       });
+      
+      // Apply text field update strategies
+      textFields.forEach(({ name, strategy }) => {
+        if (reportData[name] !== undefined) {
+          updateData[name] = updateTextField(report[name], reportData[name], strategy);
+        }
+      });
+      
+      report.set(updateData);
       await report.save({ session });
       console.log("DEBUG BACKEND SERVICE: Report updated successfully");
     } else {
@@ -324,6 +378,7 @@ const saveOrUpdateReport = async (userId, reportData) => {
         machinery,
         reportDate: inputDate,
         status: "draft",
+        lastUpdated: new Date(),
       });
       await report.save({ session });
       console.log(
@@ -593,7 +648,7 @@ module.exports = {
   getAllReports,
   getReportById,
   getReportByDate,
-  saveOrUpdateReport,
+  upsertDailyReport,
   submitDailyReport,
   createNewReport,
   deleteReport,

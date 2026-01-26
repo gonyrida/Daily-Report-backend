@@ -8,7 +8,7 @@ const {
   getDailyReports,
   getReportById,
   getReportByDate,
-  saveOrUpdateReport,
+  upsertDailyReport,
   submitReport,
   createNewReport,
   createBlankReport,
@@ -23,7 +23,7 @@ router.get("/recent", authenticateToken, getRecentReports); // New: Recent repor
 router.get("/:reportId", authenticateToken, getReportById);
 router.post("/", authenticateToken, createNewReport);
 router.post("/blank", authenticateToken, createBlankReport); // New: Create blank report immediately
-router.post("/save", authenticateToken, saveOrUpdateReport);
+router.post("/upsert", authenticateToken, upsertDailyReport); // New: Upsert with proper update/insert logic
 router.patch("/:reportId/auto-save", authenticateToken, autoSaveReport); // New: Auto-save (partial update)
 router.post("/submit", authenticateToken, submitReport);
 

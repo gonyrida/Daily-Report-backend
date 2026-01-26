@@ -61,8 +61,33 @@ const getReportByDate = async (req, res) => {
     );
 
     // 🔒 NEW QUERY: Find most recent report for this date
+    // Create date range for the entire day to match Date objects in DB
+    const inputDate = new Date(date);
+    const startOfDay = new Date(
+      Date.UTC(
+        inputDate.getUTCFullYear(),
+        inputDate.getUTCMonth(),
+        inputDate.getUTCDate(),
+        0,
+        0,
+        0,
+        0
+      )
+    );
+    const endOfDay = new Date(
+      Date.UTC(
+        inputDate.getUTCFullYear(),
+        inputDate.getUTCMonth(),
+        inputDate.getUTCDate(),
+        23,
+        59,
+        59,
+        999
+      )
+    );
+
     const report = await DailyReport.findOne({ 
-      reportDate: date,
+      reportDate: { $gte: startOfDay, $lte: endOfDay },
       userId: req.user.userId 
     }).sort({ updatedAt: -1 }); // Sort by most recent first
     console.log("🐛 DEBUG BACKEND: findOne result:", report);
@@ -80,7 +105,68 @@ const getReportByDate = async (req, res) => {
   }
 };
 
-// Save or update report
+// Upsert daily report with proper update/insert logic
+const upsertDailyReport = async (req, res) => {
+  try {
+    console.log("DEBUG BACKEND CONTROLLER: Upsert request received");
+
+    const reportData = req.body;
+    console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
+    
+    // Validate required fields
+    if (!reportData.reportDate) {
+      return res.status(400).json({ message: "Report date is required" });
+    }
+    if (!reportData.projectName) {
+      return res.status(400).json({ message: "Project name is required" });
+    }
+
+    // Extract userId from authenticated user
+    const userId = req.user.userId;
+    if (!userId) {
+      console.error("DEBUG BACKEND: No userId found in req.user");
+      return res.status(401).json({ message: "User authentication required" });
+    }
+
+    console.log("DEBUG BACKEND: Upserting report for userId:", userId);
+
+    // Fix date normalization to handle timezone properly
+    const dateStr = reportData.reportDate;
+    const dateObj = new Date(dateStr);
+    const utcDate = new Date(
+      dateObj.getTime() - dateObj.getTimezoneOffset() * 60000
+    );
+    const dateOnly = utcDate.toISOString().split("T")[0];
+    reportData.reportDate = new Date(`${dateOnly}T00:00:00.000Z`);
+
+    console.log("DEBUG BACKEND: Normalized reportDate:", reportData.reportDate);
+
+    console.log("DEBUG BACKEND: Calling upsertDailyReport service with:", {
+      userId,
+      projectName: reportData.projectName,
+      reportDate: reportData.reportDate,
+    });
+
+    const report = await dailyReportService.upsertDailyReport(
+      userId,
+      reportData
+    );
+    
+    const isUpdate = report.lastUpdated > report.createdAt;
+    console.log("DEBUG BACKEND: Report", isUpdate ? "updated" : "created", "successfully:", report._id);
+    
+    return res.status(200).json({ 
+      message: `Report ${isUpdate ? 'updated' : 'created'} successfully`, 
+      data: report,
+      action: isUpdate ? 'updated' : 'created'
+    });
+  } catch (error) {
+    console.error("DEBUG BACKEND: Upsert error:", error);
+    return res.status(500).json({ message: "Failed to upsert report" });
+  }
+};
+
+// Save or update report (kept for backward compatibility)
 const saveOrUpdateReport = async (req, res) => {
   try {
     console.log("DEBUG BACKEND CONTROLLER: Save request received");
@@ -110,12 +196,12 @@ const saveOrUpdateReport = async (req, res) => {
 
     console.log("DEBUG BACKEND: Normalized reportDate:", reportData.reportDate);
 
-    console.log("DEBUG BACKEND: Calling saveOrUpdateReport service with:", {
+    console.log("DEBUG BACKEND: Calling upsertDailyReport service with:", {
       userId,
       reportDate: reportData.reportDate,
     });
 
-    const report = await dailyReportService.saveOrUpdateReport(
+    const report = await dailyReportService.upsertDailyReport(
       userId,
       reportData
     );
@@ -299,7 +385,7 @@ module.exports = {
   getDailyReports,
   getReportById,
   getReportByDate,
-  saveOrUpdateReport,
+  upsertDailyReport,
   submitReport,
   createNewReport,
   createBlankReport,
