@@ -31,6 +31,11 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "user"],
       default: "user",
     },
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Company',
+      required: false, // ← IMPORTANT: Optional for existing users
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -80,6 +85,7 @@ userSchema.methods.toJSON = function () {
 // Indexes
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ createdAt: 1 });
+userSchema.index({ companyId: 1 });
 
 const User = mongoose.model("User", userSchema);
 

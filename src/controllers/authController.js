@@ -68,12 +68,21 @@ exports.register = async (req, res) => {
     console.log("✅ No existing user, creating new user...");
 
     // Create user
-    const user = new User({
+    const userData = {
       email: email.toLowerCase(),
       password,
       firstName,
       lastName,
-    });
+    };
+
+    // Add companyId for development testing
+    const TEST_COMPANY_ID = "6975e43e400dcc89c6f92463"; // ← Replace with your actual ObjectId
+    if (process.env.NODE_ENV === 'development') {
+      userData.companyId = TEST_COMPANY_ID;
+      console.log('🔧 DEV MODE: Assigned test company to new user:', TEST_COMPANY_ID);
+    }
+
+    const user = new User(userData);
 
     console.log("💾 Saving user to database...");
     await user.save();

@@ -191,7 +191,7 @@ const getReportByDateOnly = async (reportDate) => {
  * Save or update a report with rolling totals recalculation
  * Uses transactions to prevent race conditions
  */
-const saveOrUpdateReport = async (userId, reportData) => {
+const saveOrUpdateReport = async (userId, reportData, companyId) => {
   console.log("DEBUG BACKEND SERVICE: saveOrUpdateReport called with:", {
     userId,
     projectName: reportData.projectName,
@@ -300,6 +300,7 @@ const saveOrUpdateReport = async (userId, reportData) => {
       );
       report.set({
         ...reportData,
+        companyId: companyId, // ← ADD THIS (ensures existing reports get companyId)
         managementTeam,
         workingTeamInterior,
         workingTeamMEP,
@@ -315,6 +316,7 @@ const saveOrUpdateReport = async (userId, reportData) => {
       console.log("DEBUG BACKEND SERVICE: Creating new report");
       report = new DailyReport({
         userId,
+        companyId, // ← ADD THIS
         ...reportData,
         managementTeam,
         workingTeamInterior,
@@ -406,7 +408,7 @@ const submitDailyReport = async (userId, projectName, reportDate) => {
  * Create a new report with default/empty data
  * Always creates a new report, allows multiple reports per date/project
  */
-const createNewReport = async (userId, projectName, reportDate) => {
+const createNewReport = async (userId, projectName, reportDate, companyId) => {
   try {
     console.log("DEBUG BACKEND SERVICE: Creating new report for:", {
       userId,
@@ -418,6 +420,7 @@ const createNewReport = async (userId, projectName, reportDate) => {
     // Create new report with default values
     const report = new DailyReport({
       userId,
+      companyId,
       projectName: projectName || "Default Project",
       reportDate,
       status: "draft",
@@ -589,6 +592,63 @@ const deleteReport = async (userId, reportId) => {
   }
 };
 
+const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+  try {
+    const skip = (page - 1) * limit;
+    
+    // Build search query
+    let searchQuery = search ? {
+      $and: [
+        { companyId },
+        {
+          $or: [
+            { projectName: { $regex: search, $options: "i" } },
+            { activityToday: { $regex: search, $options: "i" } },
+            { "userId.firstName": { $regex: search, $options: "i" } },
+            { "userId.lastName": { $regex: search, $options: "i" } }
+          ]
+        }
+      ]
+    } : { companyId };
+    // ADD PROJECT FILTER
+    if (projectFilter) {
+      searchQuery = {
+        $and: [
+          searchQuery,
+          { projectName: projectFilter }
+        ]
+      };
+    }
+    const [reports, total] = await Promise.all([
+      DailyReport.find(searchQuery)
+        .sort({ reportDate: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('userId', 'firstName lastName email'),
+      DailyReport.countDocuments(searchQuery)
+    ]);
+    
+    return {
+      success: true,
+      data: reports,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1
+      }
+    };
+  } catch (error) {
+    console.error("Get company reports error:", error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
 module.exports = {
   getAllReports,
   getReportById,
@@ -600,4 +660,5 @@ module.exports = {
   autoSaveReport,
   getRecentReports,
   createBlankReport,
+  getCompanyReports,
 };

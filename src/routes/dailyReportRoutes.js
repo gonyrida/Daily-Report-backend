@@ -15,11 +15,15 @@ const {
   autoSaveReport,
   getRecentReports,
   deleteReport,
+  getCompanyReports,
+  getCompanyProjects
 } = require("../controllers/dailyReportController");
 
 // Use 'authenticateToken' instead of 'authMiddleware'
 router.get("/", authenticateToken, getDailyReports);
 router.get("/recent", authenticateToken, getRecentReports); // New: Recent reports for dashboard
+router.get("/projects", authenticateToken, getCompanyProjects); // Add this route
+router.get("/company", authenticateToken, getCompanyReports);
 router.get("/:reportId", authenticateToken, getReportById);
 router.post("/", authenticateToken, createNewReport);
 router.post("/blank", authenticateToken, createBlankReport); // New: Create blank report immediately

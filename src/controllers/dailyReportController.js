@@ -84,7 +84,8 @@ const getReportByDate = async (req, res) => {
 const saveOrUpdateReport = async (req, res) => {
   try {
     console.log("DEBUG BACKEND CONTROLLER: Save request received");
-
+    console.log('🔧 DEBUG: req.user:', req.user);
+    console.log('🔧 DEBUG: req.user.companyId:', req.user.companyId);
     const reportData = req.body;
     console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
     if (!reportData.reportDate)
@@ -92,12 +93,14 @@ const saveOrUpdateReport = async (req, res) => {
 
     // Extract userId from authenticated user
     const userId = req.user.userId;
+    const companyId = req.user.companyId; // ← ADD THIS LINE
     if (!userId) {
       console.error("DEBUG BACKEND: No userId found in req.user");
       return res.status(401).json({ message: "User authentication required" });
     }
 
     console.log("DEBUG BACKEND: Saving report for userId:", userId);
+    console.log("DEBUG BACKEND: Saving report for companyId:", companyId); // ← ADD THIS
 
     // Fix date normalization to handle timezone properly
     const dateStr = reportData.reportDate;
@@ -112,12 +115,14 @@ const saveOrUpdateReport = async (req, res) => {
 
     console.log("DEBUG BACKEND: Calling saveOrUpdateReport service with:", {
       userId,
+      companyId, // ← ADD THIS
       reportDate: reportData.reportDate,
     });
 
     const report = await dailyReportService.saveOrUpdateReport(
       userId,
-      reportData
+      reportData,
+      companyId // ← ADD COMPANYID PARAMETER
     );
     console.log("DEBUG BACKEND: Report saved successfully:", report._id);
     return res
@@ -163,6 +168,8 @@ const submitReport = async (req, res) => {
 };
 
 const createNewReport = async (req, res) => {
+  console.log('🔧 DEBUG: req.user:', req.user);
+  console.log('🔧 DEBUG: req.user.companyId:', req.user.companyId);
   try {
     const { projectName, date } = req.body;
     const userId = req.user.userId; // Extract userId from authenticated user
@@ -184,7 +191,8 @@ const createNewReport = async (req, res) => {
     const report = await dailyReportService.createNewReport(
       userId,
       projectName,
-      normalizedDate
+      normalizedDate,
+      req.user.companyId // ← ADD COMPANY ID
     );
     
     console.log("DEBUG BACKEND CONTROLLER: New report created with ID:", report._id);
@@ -295,6 +303,86 @@ const deleteReport = async (req, res) => {
   }
 };
 
+const getCompanyReports = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = "", project = "" } = req.query;
+    const companyId = req.user.companyId;
+
+    // Check if user has companyId
+    if (!companyId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not associated with any company"
+      });
+    }
+
+    const result = await dailyReportService.getCompanyReports(
+      companyId,
+      parseInt(page),
+      parseInt(limit),
+      search,
+      project // ← ADD PROJECT FILTER
+    );
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch company reports",
+        error: result.error
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Company reports fetched successfully",
+      reports: result.data,
+      pagination: result.pagination
+    });
+
+  } catch (error) {
+    console.error("Get company reports controller error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching company reports",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
+const getCompanyProjects = async (req, res) => {
+  try {
+    const companyId = req.user.companyId;
+
+    // Check if user has companyId
+    if (!companyId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not associated with any company"
+      });
+    }
+
+    // Get all unique project names from company reports
+    const projects = await DailyReport.distinct('projectName', {
+      companyId: companyId,
+      projectName: { $ne: null, $exists: true }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Company projects fetched successfully",
+      projects: projects.sort() // Sort alphabetically
+    });
+
+  } catch (error) {
+    console.error("Get company projects controller error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching company projects",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
 module.exports = {
   getDailyReports,
   getReportById,
@@ -306,4 +394,6 @@ module.exports = {
   autoSaveReport,
   getRecentReports,
   deleteReport,
+  getCompanyReports,
+  getCompanyProjects
 };
