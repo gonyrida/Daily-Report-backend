@@ -17,10 +17,11 @@ const getReportById = async (req, res) => {
   try {
     const { reportId } = req.params;
     const userId = req.user.userId;
+    const companyId = req.user.companyId; // ← ADD THIS
     
     console.log("DEBUG BACKEND CONTROLLER: getReportById called for:", { reportId, userId });
     
-    const report = await dailyReportService.getReportById(userId, reportId);
+    const report = await dailyReportService.getReportById(userId, reportId, companyId); // ← ADD THIS
     
     if (!report) {
       console.log("DEBUG BACKEND CONTROLLER: Report not found");

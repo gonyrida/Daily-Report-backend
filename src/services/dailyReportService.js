@@ -79,8 +79,16 @@ const getAllReports = async (userId) => {
 /**
  * Get a specific report by ID and userId
  */
-const getReportById = async (userId, reportId) => {
-  return await DailyReport.findOne({ _id: reportId, userId });
+const getReportById = async (userId, reportId, companyId) => {
+  // First try to find user's own report
+  let report = await DailyReport.findOne({ _id: reportId, userId });
+  
+  // If not found and user has companyId, try company-wide access
+  if (!report && companyId) {
+    report = await DailyReport.findOne({ _id: reportId, companyId });
+  }
+  
+  return report;
 };
 
 /**
