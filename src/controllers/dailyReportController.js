@@ -1,4 +1,5 @@
 const dailyReportService = require("../services/dailyReportService");
+const notificationService = require("../services/notificationService");
 const DailyReport = require('../models/dailyReportModel');
 
 // Get all reports for authenticated user
@@ -237,6 +238,19 @@ const submitReport = async (req, res) => {
       projectName,
       normalizedDate
     );
+
+    // Send email notification for successful report submission
+    try {
+      await notificationService.sendReportSubmissionConfirmation(userId, {
+        projectName,
+        reportDate: normalizedDate
+      });
+      console.log("Email notification sent for report submission");
+    } catch (emailError) {
+      console.error("Failed to send email notification:", emailError);
+      // Don't fail the request if email fails
+    }
+
     // Even if something went weird, if we got here, send success
     res.status(200).json({
       success: true,

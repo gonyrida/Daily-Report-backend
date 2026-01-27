@@ -51,6 +51,24 @@ const userSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    notificationPreferences: {
+      emailNotifications: {
+        type: Boolean,
+        default: true,
+      },
+      autoSave: {
+        type: Boolean,
+        default: true,
+      },
+      dataSharing: {
+        type: Boolean,
+        default: false,
+      },
+      marketingEmails: {
+        type: Boolean,
+        default: false,
+      },
+    },
   },
   {
     timestamps: true,
