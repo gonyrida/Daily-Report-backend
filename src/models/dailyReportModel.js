@@ -80,9 +80,77 @@ const dailyReportSchema = new mongoose.Schema(
     },
 
     managementTeam: [ResourceSchema],
-    workingTeam: [ResourceSchema],
+    workingTeamInterior: [ResourceSchema],
+    workingTeamMEP: [ResourceSchema],
     materials: [ResourceSchema],
     machinery: [ResourceSchema],
+
+    // Backward compatibility for old data (optional)
+    workingTeam: [ResourceSchema],
+    interiorTeam: [ResourceSchema],
+    mepTeam: [ResourceSchema],
+
+    // New fields for combined reports
+    logos: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+
+    hse_title: {
+      type: String,
+      default: "",
+    },
+
+    hse: [{
+      section_title: { type: String, default: "" },
+      images: [{ type: String }],
+      footers: [{ type: String }]
+    }],
+
+    site_title: {
+      type: String,
+      default: "",
+    },
+
+    site_ref: [{
+      section_title: { type: String, default: "" },
+      images: [{ type: String }],
+      footers: [{ type: String }]
+    }],
+
+    description: {
+      type: String,
+      default: "",
+    },
+
+    photo_groups: [{
+      images: [{ type: String }],
+      date: { type: String },
+      footers: [{ type: String }]
+    }],
+
+    referenceSections: {
+      type: mongoose.Schema.Types.Mixed, // or define a proper schema
+      default: undefined,
+    },
+
+    tableTitle: {
+      type: String,
+      default: "SITE PHOTO EVIDENCE",
+    },
+
+    carSheet: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        description: "",
+        photo_groups: []
+      },
+    },
+
+    projectLogo: {
+      type: String,  // Store base64 or URL
+      default: "",
+    },
 
     status: {
       type: String,
@@ -94,6 +162,11 @@ const dailyReportSchema = new mongoose.Schema(
       type: Date,
       default: null,
     }, // ← ADD THIS
+
+    lastUpdated: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,
@@ -104,6 +177,7 @@ const dailyReportSchema = new mongoose.Schema(
 dailyReportSchema.index({ projectName: 1, reportDate: 1 });
 dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
 dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
+dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1 }, { unique: true }); // Prevent duplicate reports
 
 const DailyReport = mongoose.model("DailyReport", dailyReportSchema);
 

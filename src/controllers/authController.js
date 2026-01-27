@@ -167,6 +167,7 @@ exports.login = async (req, res) => {
       success: true,
       message: "Login successful",
       user: user.toJSON(),
+      token: token,
     });
   } catch (error) {
     console.error("Login error:", error);

@@ -21,6 +21,12 @@ const authenticateToken = async (req, res, next) => {
       );
     }
 
+    // Fallback to custom header for localStorage tokens
+    if (!token) {
+      token = req.headers['x-auth-token'];
+      console.log("DEBUG AUTH MIDDLEWARE: Trying custom header:", token ? "PRESENT" : "MISSING");
+    }
+
     console.log("DEBUG AUTH MIDDLEWARE: Token:", token ? "PRESENT" : "MISSING");
 
     if (!token) {
