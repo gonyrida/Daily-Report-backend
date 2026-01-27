@@ -4,19 +4,19 @@ const { v4: uuidv4 } = require('uuid');
 // In production, this would be a database (MongoDB, PostgreSQL, etc.)
 let feedbackData = [];
 
-const createFeedback = async (feedbackData) => {
+const createFeedback = async (feedbackInput) => {
   try {
     const feedback = {
       id: uuidv4(),
-      rating: feedbackData.rating,
-      message: feedbackData.message,
-      category: feedbackData.category,
-      userId: feedbackData.userId,
-      userEmail: feedbackData.userEmail,
-      userAgent: feedbackData.userAgent,
-      url: feedbackData.url,
-      ipAddress: feedbackData.ipAddress,
-      timestamp: feedbackData.timestamp
+      rating: feedbackInput.rating,
+      message: feedbackInput.message,
+      category: feedbackInput.category,
+      userId: feedbackInput.userId,
+      userEmail: feedbackInput.userEmail,
+      userAgent: feedbackInput.userAgent,
+      url: feedbackInput.url,
+      ipAddress: feedbackInput.ipAddress,
+      timestamp: feedbackInput.timestamp
     };
 
     // Store feedback (in production, save to database)
