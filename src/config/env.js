@@ -20,6 +20,7 @@ module.exports = {
   EMAIL_USER: process.env.EMAIL_USER || "CACPM.Mail@gmail.com",
   EMAIL_PASS: process.env.EMAIL_PASS || "naymjuiztgvcbcvw",
   EMAIL_FROM: process.env.EMAIL_FROM || "CACPM.Mail@gmail.com",
+  SUPPORT_EMAIL: process.env.SUPPORT_EMAIL || "CACPM.Mail@gmail.com",
   FRONTEND_URL:
     process.env.FRONTEND_URL ||
     "http://localhost:8080",

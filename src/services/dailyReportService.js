@@ -248,29 +248,6 @@ const upsertDailyReport = async (userId, reportData) => {
       previousProjectName: previousReport?.projectName
     });
 
-    // 🔥 FIX #2: Helper to merge duplicate descriptions in same day
-    const mergeDuplicateDescriptions = (items) => {
-      if (!items || items.length === 0) return [];
-      
-      const merged = new Map();
-      
-      items.forEach(item => {
-        const key = item.description?.trim();
-        if (!key) return; // Skip empty descriptions
-        
-        if (merged.has(key)) {
-          // Merge: sum the 'today' values
-          const existing = merged.get(key);
-          existing.today = (Number(existing.today) || 0) + (Number(item.today) || 0);
-          console.log(`DEBUG: Merged duplicate "${key}": ${existing.today}`);
-        } else {
-          merged.set(key, { ...item });
-        }
-      });
-      
-      return Array.from(merged.values());
-    };
-
     // 🔥 FIX #3: Enhanced rolling totals with validation
     const calculateRollingTotals = (newItems, previousItems = []) => {
       // First, merge any duplicate descriptions in current day's data

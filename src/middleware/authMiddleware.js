@@ -54,6 +54,7 @@ const authenticateToken = async (req, res, next) => {
 
     // Add user to request object
     req.user = decoded;
+    req.token = token; // Add token for session tracking
     console.log(
       "DEBUG AUTH MIDDLEWARE: Authentication successful, user:",
       req.user
