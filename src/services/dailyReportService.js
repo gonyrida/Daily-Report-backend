@@ -2,7 +2,7 @@ const DailyReport = require("../models/dailyReportModel.js");
 /**
  * Recalculate rolling totals for future reports when a past report is edited
  */
-const recalculateFutureReports = async (userId, futureReports, session) => {
+const recalculateFutureReports = async (userId, projectName, futureReports, session) => {
   for (let i = 0; i < futureReports.length; i++) {
     const currentReport = futureReports[i];
 
@@ -12,6 +12,7 @@ const recalculateFutureReports = async (userId, futureReports, session) => {
         ? futureReports[i - 1]
         : await DailyReport.findOne({
             userId,
+            projectName,  // ← Also filter by project for consistency
             reportDate: { $lt: currentReport.reportDate },
           })
             .sort({ reportDate: -1 })
@@ -232,31 +233,71 @@ const upsertDailyReport = async (userId, reportData) => {
       report ? "YES" : "NO"
     );
 
-    // Get the previous report for rolling totals calculation
+    // 🔥 FIX #1: Get the previous report with projectName filter
     const previousReport = await DailyReport.findOne({
       userId,
+      projectName,  // ← CRITICAL FIX: Must match same project!
       reportDate: { $lt: startOfDay },
     })
       .sort({ reportDate: -1 })
       .session(session);
 
-    console.log(
-      "DEBUG BACKEND SERVICE: Previous report found:",
-      previousReport ? "YES" : "NO"
-    );
+    console.log("DEBUG BACKEND SERVICE: Previous report found:", {
+      found: previousReport ? "YES" : "NO",
+      previousDate: previousReport?.reportDate?.toISOString(),
+      previousProjectName: previousReport?.projectName
+    });
 
-    // Helper function to calculate rolling totals
+    // 🔥 FIX #2: Helper to merge duplicate descriptions in same day
+    const mergeDuplicateDescriptions = (items) => {
+      if (!items || items.length === 0) return [];
+      
+      const merged = new Map();
+      
+      items.forEach(item => {
+        const key = item.description?.trim();
+        if (!key) return; // Skip empty descriptions
+        
+        if (merged.has(key)) {
+          // Merge: sum the 'today' values
+          const existing = merged.get(key);
+          existing.today = (Number(existing.today) || 0) + (Number(item.today) || 0);
+          console.log(`DEBUG: Merged duplicate "${key}": ${existing.today}`);
+        } else {
+          merged.set(key, { ...item });
+        }
+      });
+      
+      return Array.from(merged.values());
+    };
+
+    // 🔥 FIX #3: Enhanced rolling totals with validation
     const calculateRollingTotals = (newItems, previousItems = []) => {
-      return newItems.map((item) => {
+      // First, merge any duplicate descriptions in current day's data
+      const uniqueNewItems = mergeDuplicateDescriptions(newItems);
+      
+      return uniqueNewItems.map((item) => {
         const prevItem = previousItems.find(
-          (p) => p.description === item.description
+          (p) => p.description?.trim() === item.description?.trim()
         );
-        const prevAccum = prevItem?.accumulated || 0;
+        
+        const prevAccum = Number(prevItem?.accumulated) || 0;
         const today = Number(item.today) || 0;
+        const accumulated = prevAccum + today;
+        
+        // Validation logging
+        console.log(`DEBUG: Rolling total for "${item.description}":`, {
+          prev: prevAccum,
+          today: today,
+          accumulated: accumulated,
+          foundPrevious: !!prevItem
+        });
+        
         return {
           ...item,
           prev: prevAccum,
-          accumulated: prevAccum + today,
+          today: today, // Ensure it's a number
+          accumulated: accumulated,
         };
       });
     };
@@ -283,16 +324,19 @@ const upsertDailyReport = async (userId, reportData) => {
     };
 
     // Calculate rolling totals for all resource arrays
+    console.log("DEBUG: Calculating rolling totals for managementTeam...");
     const managementTeam = calculateRollingTotals(
       reportData.managementTeam || [],
       previousReport?.managementTeam || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for workingTeamInterior...");
     const workingTeamInterior = calculateRollingTotals(
       reportData.workingTeamInterior || [],
       previousReport?.workingTeamInterior || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for workingTeamMEP...");
     const workingTeamMEP = calculateRollingTotals(
       reportData.workingTeamMEP || [],
       previousReport?.workingTeamMEP || []
@@ -304,11 +348,13 @@ const upsertDailyReport = async (userId, reportData) => {
       previousReport?.workingTeam || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for materials...");
     const materials = calculateRollingTotals(
       reportData.materials || [],
       previousReport?.materials || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for machinery...");
     const machinery = calculateRollingTotals(
       reportData.machinery || [],
       previousReport?.machinery || []
@@ -390,13 +436,15 @@ const upsertDailyReport = async (userId, reportData) => {
     // Check if there are future reports that need recalculation
     const futureReports = await DailyReport.find({
       userId,
+      projectName,  // ← Also filter future reports by project
       reportDate: { $gt: endOfDay },
     })
       .sort({ reportDate: 1 })
       .session(session);
 
     if (futureReports.length > 0) {
-      await recalculateFutureReports(userId, futureReports, session);
+      console.log(`DEBUG: Recalculating ${futureReports.length} future reports...`);
+      await recalculateFutureReports(userId, projectName, futureReports, session);
     }
 
     await session.commitTransaction();
