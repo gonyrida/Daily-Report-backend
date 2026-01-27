@@ -265,12 +265,11 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// @desc    Update user profile
 // @route   PUT /api/auth/profile
 // @access  Private
 exports.updateProfile = async (req, res) => {
   try {
-    const { fullName, profilePicture } = req.body;
+    const { fullName, email, profilePicture } = req.body;
     const user = await User.findById(req.user.userId);
 
     if (!user) {
@@ -281,10 +280,31 @@ exports.updateProfile = async (req, res) => {
     }
 
     // Update fullName if provided
-    if (fullName) {
+    if (fullName !== undefined) {
+      user.fullName = fullName;
+      
+      // Also update firstName and lastName for compatibility
       const nameParts = fullName.trim().split(' ');
       user.firstName = nameParts[0] || user.firstName;
       user.lastName = nameParts.slice(1).join(' ') || user.lastName;
+    }
+
+    // Update email if provided (with validation)
+    if (email !== undefined && email !== user.email) {
+      // Check if email is already in use by another user
+      const existingUser = await User.findOne({ 
+        email: email.toLowerCase(), 
+        _id: { $ne: user._id } 
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Email is already in use by another account",
+        });
+      }
+      
+      user.email = email.toLowerCase();
     }
 
     // Update profilePicture if provided
