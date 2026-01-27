@@ -1,5 +1,26 @@
 const DailyReport = require("../models/dailyReportModel.js");
 /**
+ * Merge duplicate descriptions in resource arrays to prevent conflicts
+ */
+const mergeDuplicateDescriptions = (items) => {
+  if (!Array.isArray(items)) return [];
+  
+  const merged = {};
+  items.forEach(item => {
+    if (item && item.description) {
+      const key = item.description.trim();
+      if (!merged[key]) {
+        merged[key] = { ...item, today: 0 };
+      }
+      // Sum up the 'today' values for duplicate descriptions
+      merged[key].today = (Number(merged[key].today) || 0) + (Number(item.today) || 0);
+    }
+  });
+  
+  return Object.values(merged);
+};
+
+/**
  * Recalculate rolling totals for future reports when a past report is edited
  */
 const recalculateFutureReports = async (userId, projectName, futureReports, session) => {
