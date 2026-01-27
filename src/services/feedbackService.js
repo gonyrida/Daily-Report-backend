@@ -220,6 +220,31 @@ const initializeSampleData = () => {
 // Initialize sample data on module load
 initializeSampleData();
 
+// Helper function to clean up old sessions (for maintenance)
+const cleanupOldSessions = async (daysOld = 7) => {
+  try {
+    // This function would clean up old feedback sessions if we had them
+    // For now, it's a placeholder for the cleanup service
+    console.log(`🧹 Feedback session cleanup not implemented (placeholder)`);
+    return 0;
+  } catch (error) {
+    console.error('❌ Error cleaning up feedback sessions:', error);
+    throw new Error('Failed to cleanup feedback sessions');
+  }
+};
+
+// Helper function to get active session count (for maintenance)
+const getActiveSessionCount = async () => {
+  try {
+    // This would count active feedback sessions if we had them
+    // For now, return 0 as feedback doesn't have sessions
+    return 0;
+  } catch (error) {
+    console.error('❌ Error getting active session count:', error);
+    return 0;
+  }
+};
+
 module.exports = {
   createFeedback,
   getFeedbackAnalytics,
