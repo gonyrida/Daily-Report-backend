@@ -336,10 +336,29 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
         status: "draft",
       });
       await report.save({ session });
-      console.log(
-        "DEBUG BACKEND SERVICE: New report created with ID:",
-        report._id
-      );
+      console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
+      
+      // 🚀 NEW: Update project statistics for new reports
+      try {
+        const Project = require('../models/projectModel');
+        await Project.findOneAndUpdate(
+          { 
+            name: reportData.projectName, 
+            isActive: true 
+          },
+          { 
+            $inc: { reportCount: 1 },
+            $set: { lastReportDate: inputDate }
+          },
+          { 
+            new: true,
+            upsert: false
+          }
+        );
+        console.log("DEBUG BACKEND SERVICE: Project stats updated for:", reportData.projectName);
+      } catch (projectError) {
+        console.error("DEBUG BACKEND SERVICE: Failed to update project stats:", projectError);
+      }
     }
 
     // Check if there are future reports that need recalculation
@@ -455,6 +474,29 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
     });
 
     await report.save();
+    
+    // 🚀 NEW: Update project statistics
+    try {
+      const Project = require('../models/projectModel');
+      await Project.findOneAndUpdate(
+        { 
+          name: projectName, 
+          isActive: true 
+        },
+        { 
+          $inc: { reportCount: 1 },  // ← Increment count
+          $set: { lastReportDate: reportDate }  // ← Update last report date
+        },
+        { 
+          new: true,  // Return updated document
+          upsert: false  // Don't create if project doesn't exist
+        }
+      );
+      console.log("DEBUG BACKEND SERVICE: Project stats updated for:", projectName);
+    } catch (projectError) {
+      console.error("DEBUG BACKEND SERVICE: Failed to update project stats:", projectError);
+      // Don't fail the report creation if project update fails
+    }
     
     console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
     return report;
@@ -582,14 +624,49 @@ const deleteReport = async (userId, reportId) => {
   try {
     console.log("DEBUG BACKEND SERVICE: Deleting report:", { userId, reportId });
     
-    const result = await DailyReport.findOneAndDelete({
+    // First get the report to get project name before deletion
+    const report = await DailyReport.findOne({
       _id: reportId,
       userId: userId, // Ensure user can only delete their own reports
     });
     
-    if (!result) {
+    if (!report) {
       console.log("DEBUG BACKEND SERVICE: Report not found for deletion");
       return null;
+    }
+    
+    // Delete the report
+    const result = await DailyReport.findOneAndDelete({
+      _id: reportId,
+      userId: userId,
+    });
+    
+    // 🚀 NEW: Update project statistics
+    try {
+      const Project = require('../models/projectModel');
+      
+      // Get remaining report count for this project
+      const remainingReports = await DailyReport.countDocuments({
+        projectName: report.projectName,
+        userId: userId
+      });
+      
+      await Project.findOneAndUpdate(
+        { 
+          name: report.projectName, 
+          isActive: true 
+        },
+        { 
+          $set: { 
+            reportCount: Math.max(0, remainingReports),  // ← Update count
+            lastReportDate: remainingReports > 0 ? report.reportDate : null  // ← Update or clear date
+          }
+        },
+        { new: true }
+      );
+      console.log("DEBUG BACKEND SERVICE: Project stats updated after deletion for:", report.projectName);
+    } catch (projectError) {
+      console.error("DEBUG BACKEND SERVICE: Failed to update project stats after deletion:", projectError);
     }
     
     console.log("DEBUG BACKEND SERVICE: Report deleted successfully");

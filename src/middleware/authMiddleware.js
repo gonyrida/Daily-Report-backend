@@ -52,8 +52,13 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    // Add user to request object
-    req.user = decoded;
+    // Add user to request object with full user info
+    req.user = {
+      ...decoded,
+      name: `${user.firstName} ${user.lastName}`,  // Combine first + last name
+      email: user.email,      // Add user's email
+      id: decoded.userId     // For backward compatibility
+    };
     console.log(
       "DEBUG AUTH MIDDLEWARE: Authentication successful, user:",
       req.user

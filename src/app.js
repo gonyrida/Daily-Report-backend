@@ -6,6 +6,7 @@ const connectDB = require("./config/db");
 const dailyReportRoutes = require("./routes/dailyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
+const projectRoutes = require("./routes/projectRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const env = require("./config/env"); // Add this line
 
@@ -55,6 +56,7 @@ app.use(
 // Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
+app.use("/api/projects", authenticateToken, projectRoutes);
 app.use("/api/images", imageRoutes);
 
 // Health check route
