@@ -1,8 +1,29 @@
 const DailyReport = require("../models/dailyReportModel.js");
 /**
+ * Merge duplicate descriptions in resource arrays to prevent conflicts
+ */
+const mergeDuplicateDescriptions = (items) => {
+  if (!Array.isArray(items)) return [];
+  
+  const merged = {};
+  items.forEach(item => {
+    if (item && item.description) {
+      const key = item.description.trim();
+      if (!merged[key]) {
+        merged[key] = { ...item, today: 0 };
+      }
+      // Sum up the 'today' values for duplicate descriptions
+      merged[key].today = (Number(merged[key].today) || 0) + (Number(item.today) || 0);
+    }
+  });
+  
+  return Object.values(merged);
+};
+
+/**
  * Recalculate rolling totals for future reports when a past report is edited
  */
-const recalculateFutureReports = async (userId, futureReports, session) => {
+const recalculateFutureReports = async (userId, projectName, futureReports, session) => {
   for (let i = 0; i < futureReports.length; i++) {
     const currentReport = futureReports[i];
 
@@ -12,6 +33,7 @@ const recalculateFutureReports = async (userId, futureReports, session) => {
         ? futureReports[i - 1]
         : await DailyReport.findOne({
             userId,
+            projectName,  // ← Also filter by project for consistency
             reportDate: { $lt: currentReport.reportDate },
           })
             .sort({ reportDate: -1 })
@@ -156,8 +178,9 @@ const getReportByDateOnly = async (reportDate) => {
 };
 
 /**
- * Save or update a report with rolling totals recalculation
- * Uses transactions to prevent race conditions
+ * Upsert daily report with proper update/insert logic
+ * If report exists for same project and date: update it and set lastUpdated
+ * If report doesn't exist: insert as new record
  */
 const saveOrUpdateReport = async (userId, reportData, companyId) => {
   console.log("DEBUG BACKEND SERVICE: saveOrUpdateReport called with:", {
@@ -187,7 +210,7 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
       endOfDay: endOfDay.toISOString(),
     });
 
-    // Find existing report for this user
+    // Find existing report for this user, project, and date
     let report = await DailyReport.findOne({
       userId,
       projectName,
@@ -199,46 +222,87 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
       report ? "YES" : "NO"
     );
 
-    // Get the previous report for rolling totals calculation
+    // 🔥 FIX #1: Get the previous report with projectName filter
     const previousReport = await DailyReport.findOne({
       userId,
+      projectName,  // ← CRITICAL FIX: Must match same project!
       reportDate: { $lt: startOfDay },
     })
       .sort({ reportDate: -1 })
       .session(session);
 
-    console.log(
-      "DEBUG BACKEND SERVICE: Previous report found:",
-      previousReport ? "YES" : "NO"
-    );
+    console.log("DEBUG BACKEND SERVICE: Previous report found:", {
+      found: previousReport ? "YES" : "NO",
+      previousDate: previousReport?.reportDate?.toISOString(),
+      previousProjectName: previousReport?.projectName
+    });
 
-    // Helper function to calculate rolling totals
+    // 🔥 FIX #3: Enhanced rolling totals with validation
     const calculateRollingTotals = (newItems, previousItems = []) => {
-      return newItems.map((item) => {
+      // First, merge any duplicate descriptions in current day's data
+      const uniqueNewItems = mergeDuplicateDescriptions(newItems);
+      
+      return uniqueNewItems.map((item) => {
         const prevItem = previousItems.find(
-          (p) => p.description === item.description
+          (p) => p.description?.trim() === item.description?.trim()
         );
-        const prevAccum = prevItem?.accumulated || 0;
+        
+        const prevAccum = Number(prevItem?.accumulated) || 0;
         const today = Number(item.today) || 0;
+        const accumulated = prevAccum + today;
+        
+        // Validation logging
+        console.log(`DEBUG: Rolling total for "${item.description}":`, {
+          prev: prevAccum,
+          today: today,
+          accumulated: accumulated,
+          foundPrevious: !!prevItem
+        });
+        
         return {
           ...item,
           prev: prevAccum,
-          accumulated: prevAccum + today,
+          today: today, // Ensure it's a number
+          accumulated: accumulated,
         };
       });
     };
 
+    // Helper function to handle text field updates
+    const updateTextField = (existingValue, newValue, strategy = 'replace') => {
+      if (strategy === 'append' && existingValue && newValue) {
+        // Avoid duplicate content when appending
+        if (existingValue.includes(newValue)) {
+          return existingValue;
+        }
+        return existingValue + '\n' + newValue;
+      }
+      return newValue !== undefined ? newValue : existingValue;
+    };
+
+    // Helper function to handle numeric field updates
+    const updateNumericField = (existingValue, newValue) => {
+      if (newValue !== undefined && newValue !== null && newValue !== '') {
+        const parsed = Number(newValue);
+        return isNaN(parsed) ? existingValue : parsed;
+      }
+      return existingValue;
+    };
+
     // Calculate rolling totals for all resource arrays
+    console.log("DEBUG: Calculating rolling totals for managementTeam...");
     const managementTeam = calculateRollingTotals(
       reportData.managementTeam || [],
       previousReport?.managementTeam || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for workingTeamInterior...");
     const workingTeamInterior = calculateRollingTotals(
       reportData.workingTeamInterior || [],
       previousReport?.workingTeamInterior || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for workingTeamMEP...");
     const workingTeamMEP = calculateRollingTotals(
       reportData.workingTeamMEP || [],
       previousReport?.workingTeamMEP || []
@@ -250,11 +314,13 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
       previousReport?.workingTeam || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for materials...");
     const materials = calculateRollingTotals(
       reportData.materials || [],
       previousReport?.materials || []
     );
 
+    console.log("DEBUG: Calculating rolling totals for machinery...");
     const machinery = calculateRollingTotals(
       reportData.machinery || [],
       previousReport?.machinery || []
@@ -266,7 +332,22 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
         "DEBUG BACKEND SERVICE: Updating existing report:",
         report._id
       );
-      report.set({
+      
+      // Define field update strategies
+      const numericFields = ['tempAM', 'tempPM'];
+      
+      const textFields = [
+        { name: 'activityToday', strategy: 'append' },
+        { name: 'workPlanNextDay', strategy: 'replace' },
+        { name: 'weatherAM', strategy: 'replace' },
+        { name: 'weatherPM', strategy: 'replace' },
+        { name: 'hse_title', strategy: 'replace' },
+        { name: 'site_title', strategy: 'replace' },
+        { name: 'description', strategy: 'replace' },
+        { name: 'tableTitle', strategy: 'replace' }
+      ];
+      
+      const updateData = {
         ...reportData,
         companyId: companyId, // ← ADD THIS (ensures existing reports get companyId)
         managementTeam,
@@ -276,7 +357,24 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
         materials,
         machinery,
         reportDate: inputDate,
+        lastUpdated: new Date(), // Update timestamp
+      };
+      
+      // Apply numeric field updates
+      numericFields.forEach(field => {
+        if (reportData[field] !== undefined) {
+          updateData[field] = updateNumericField(report[field], reportData[field]);
+        }
       });
+      
+      // Apply text field update strategies
+      textFields.forEach(({ name, strategy }) => {
+        if (reportData[name] !== undefined) {
+          updateData[name] = updateTextField(report[name], reportData[name], strategy);
+        }
+      });
+      
+      report.set(updateData);
       await report.save({ session });
       console.log("DEBUG BACKEND SERVICE: Report updated successfully");
     } else {
@@ -294,6 +392,7 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
         machinery,
         reportDate: inputDate,
         status: "draft",
+        lastUpdated: new Date(),
       });
       await report.save({ session });
       console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
@@ -324,13 +423,15 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
     // Check if there are future reports that need recalculation
     const futureReports = await DailyReport.find({
       userId,
+      projectName,  // ← Also filter future reports by project
       reportDate: { $gt: endOfDay },
     })
       .sort({ reportDate: 1 })
       .session(session);
 
     if (futureReports.length > 0) {
-      await recalculateFutureReports(userId, futureReports, session);
+      console.log(`DEBUG: Recalculating ${futureReports.length} future reports...`);
+      await recalculateFutureReports(userId, projectName, futureReports, session);
     }
 
     await session.commitTransaction();
@@ -701,7 +802,7 @@ module.exports = {
   getAllReports,
   getReportById,
   getReportByDate,
-  saveOrUpdateReport,
+  upsertDailyReport,
   submitDailyReport,
   createNewReport,
   deleteReport,

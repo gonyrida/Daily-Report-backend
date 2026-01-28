@@ -170,6 +170,16 @@ exports.login = async (req, res) => {
     // Generate tokens
     const token = generateToken(user);
 
+    // Create login session for tracking
+    try {
+      const loginHistory = require('../services/loginHistoryService');
+      await loginHistory.createLoginSession(user._id.toString(), req, token);
+      console.log('🔐 Login session created for user:', user.email);
+    } catch (sessionError) {
+      console.error('⚠️ Failed to create login session:', sessionError);
+      // Continue with login even if session tracking fails
+    }
+
     // Set HTTP-only cookie with the token
     res.cookie("token", token, {
       httpOnly: true, // Prevents JavaScript access (XSS protection)
@@ -194,11 +204,25 @@ exports.login = async (req, res) => {
   }
 };
 
-// @desc    Logout user (invalidate token)
+// @desc    Logout user
 // @route   POST /api/auth/logout
 // @access  Private
 exports.logout = async (req, res) => {
   try {
+    // Deactivate the current session
+    try {
+      const loginHistory = require('../services/loginHistoryService');
+      const token = req.cookies.token || req.headers.authorization?.replace('Bearer ', '');
+      
+      if (token) {
+        await loginHistory.deactivateSession(token);
+        console.log('🚪 Session deactivated on logout');
+      }
+    } catch (sessionError) {
+      console.error('⚠️ Failed to deactivate session:', sessionError);
+      // Continue with logout even if session deactivation fails
+    }
+
     // Clear the authentication cookie
     res.clearCookie("token", {
       httpOnly: true,
@@ -233,9 +257,19 @@ exports.getProfile = async (req, res) => {
       });
     }
 
+    // Return user data in the format expected by frontend
     res.status(200).json({
       success: true,
-      user: user.toJSON(),
+      data: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        accountStatus: user.accountStatus,
+        profilePicture: user.profilePicture,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -246,12 +280,11 @@ exports.getProfile = async (req, res) => {
   }
 };
 
-// @desc    Update user profile
 // @route   PUT /api/auth/profile
 // @access  Private
 exports.updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName } = req.body;
+    const { fullName, email, profilePicture } = req.body;
     const user = await User.findById(req.user.userId);
 
     if (!user) {
@@ -261,16 +294,55 @@ exports.updateProfile = async (req, res) => {
       });
     }
 
-    // Update fields
-    if (firstName) user.firstName = firstName;
-    if (lastName) user.lastName = lastName;
+    // Update fullName if provided
+    if (fullName !== undefined) {
+      user.fullName = fullName;
+      
+      // Also update firstName and lastName for compatibility
+      const nameParts = fullName.trim().split(' ');
+      user.firstName = nameParts[0] || user.firstName;
+      user.lastName = nameParts.slice(1).join(' ') || user.lastName;
+    }
+
+    // Update email if provided (with validation)
+    if (email !== undefined && email !== user.email) {
+      // Check if email is already in use by another user
+      const existingUser = await User.findOne({ 
+        email: email.toLowerCase(), 
+        _id: { $ne: user._id } 
+      });
+      
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Email is already in use by another account",
+        });
+      }
+      
+      user.email = email.toLowerCase();
+    }
+
+    // Update profilePicture if provided
+    if (profilePicture !== undefined) {
+      user.profilePicture = profilePicture;
+    }
 
     await user.save();
 
+    // Return updated user data in the format expected by frontend
     res.status(200).json({
       success: true,
       message: "Profile updated successfully",
-      user: user.toJSON(),
+      data: {
+        id: user._id,
+        email: user.email,
+        fullName: user.fullName,
+        role: user.role,
+        accountStatus: user.accountStatus,
+        profilePicture: user.profilePicture,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
     });
   } catch (error) {
     console.error("Update profile error:", error);
@@ -661,6 +733,240 @@ exports.verifyToken = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error verifying token",
+    });
+  }
+};
+
+// @desc    Get user login history
+// @route   GET /api/auth/login-history
+// @access  Private
+exports.getLoginHistory = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    console.log('📋 Login history request:', { userId, page, limit });
+
+    // Get login history from service
+    const loginHistory = require('../services/loginHistoryService');
+    const result = await loginHistory.getUserLoginHistory(userId, page, limit);
+
+    res.status(200).json({
+      success: true,
+      data: result.sessions,
+      pagination: result.pagination
+    });
+
+  } catch (error) {
+    console.error('❌ Get login history error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to retrieve login history',
+    });
+  }
+};
+
+// @desc    Revoke a specific session
+// @route   POST /api/auth/revoke-session/:sessionId
+// @access  Private
+exports.revokeSession = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { sessionId } = req.params;
+
+    console.log('🚫 Revoke session request:', { userId, sessionId });
+
+    const loginHistory = require('../services/loginHistoryService');
+    await loginHistory.revokeSession(userId, sessionId);
+
+    res.status(200).json({
+      success: true,
+      message: 'Session revoked successfully',
+    });
+
+  } catch (error) {
+    console.error('❌ Revoke session error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to revoke session',
+    });
+  }
+};
+
+// @desc    Revoke all other sessions
+// @route   POST /api/auth/revoke-all-sessions
+// @access  Private
+exports.revokeAllSessions = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const currentToken = req.token; // Current session token
+
+    console.log('🚫 Revoke all sessions request:', { userId });
+
+    const loginHistory = require('../services/loginHistoryService');
+    await loginHistory.revokeAllOtherSessions(userId, currentToken);
+
+    res.status(200).json({
+      success: true,
+      message: 'All other sessions revoked successfully',
+    });
+
+  } catch (error) {
+    console.error('❌ Revoke all sessions error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to revoke sessions',
+    });
+  }
+};
+
+// @desc    Deactivate user account
+// @route   POST /api/auth/deactivate-account
+// @access  Private
+exports.deactivateAccount = async (req, res) => {
+  try {
+    const { password } = req.body;
+    const userId = req.user.userId;
+
+    console.log('🔄 Account deactivation request:', { userId });
+
+    // Validate password
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required for account deactivation',
+      });
+    }
+
+    // Find user and verify password
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+    }
+
+    // Deactivate account
+    user.isActive = false;
+    user.deactivatedAt = new Date();
+    user.deactivationReason = 'user_request';
+    await user.save();
+
+    // Revoke all sessions
+    try {
+      const loginHistory = require('../services/loginHistoryService');
+      await loginHistory.revokeAllOtherSessions(userId, null);
+    } catch (sessionError) {
+      console.error('⚠️ Failed to revoke sessions during deactivation:', sessionError);
+    }
+
+    // Log action for audit
+    console.log('🔄 Account deactivated:', {
+      userId,
+      email: user.email,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Account deactivated successfully',
+    });
+
+  } catch (error) {
+    console.error('❌ Account deactivation error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to deactivate account',
+    });
+  }
+};
+
+// @desc    Delete user account
+// @route   DELETE /api/auth/delete-account
+// @access  Private
+exports.deleteAccount = async (req, res) => {
+  try {
+    const { password, confirmation } = req.body;
+    const userId = req.user.userId;
+
+    console.log('🗑️ Account deletion request:', { userId });
+
+    // Validate inputs
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password is required for account deletion',
+      });
+    }
+
+    // Find user and verify password
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    const isPasswordValid = await user.comparePassword(password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect',
+      });
+    }
+
+    // Additional security check - confirmation text
+    const expectedConfirmation = `DELETE ${user.email}`;
+    if (confirmation !== expectedConfirmation) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid confirmation text',
+      });
+    }
+
+    // Soft delete - mark as deleted but keep data for audit
+    user.isDeleted = true;
+    user.deletedAt = new Date();
+    user.deletionReason = 'user_request';
+    user.isActive = false;
+    await user.save();
+
+    // Revoke all sessions
+    try {
+      const loginHistory = require('../services/loginHistoryService');
+      await loginHistory.revokeAllOtherSessions(userId, null);
+    } catch (sessionError) {
+      console.error('⚠️ Failed to revoke sessions during deletion:', sessionError);
+    }
+
+    // Log action for audit
+    console.log('🗑️ Account deleted:', {
+      userId,
+      email: user.email,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Account deleted successfully',
+    });
+
+  } catch (error) {
+    console.error('❌ Account deletion error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete account',
     });
   }
 };

@@ -7,6 +7,9 @@ const dailyReportRoutes = require("./routes/dailyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const projectRoutes = require("./routes/projectRoutes");
+const supportRoutes = require("./routes/supportRoutes");
+const feedbackRoutes = require("./routes/feedbackRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
 const env = require("./config/env"); // Add this line
@@ -88,6 +91,9 @@ app.use("/api/refresh-token", authLimiter, require("./routes/refreshTokenRoutes"
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
 app.use("/api/projects", authenticateToken, projectRoutes);
 app.use("/api/images", imageRoutes);
+app.use("/api/support", supportRoutes);
+app.use("/api/feedback", feedbackRoutes);
+app.use("/api/notifications", authenticateToken, notificationRoutes);
 
 // Health check route
 app.get("/", (req, res) => {

@@ -168,6 +168,11 @@ const dailyReportSchema = new mongoose.Schema(
       type: Date,
       default: null,
     }, // ← ADD THIS
+
+    lastUpdated: {
+      type: Date,
+      default: Date.now,
+    },
   },
   {
     timestamps: true,
@@ -179,6 +184,7 @@ dailyReportSchema.index({ projectName: 1, reportDate: 1 });
 dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
 dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
 dailyReportSchema.index({ companyId: 1, reportDate: -1 });
+dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1 }, { unique: true }); // Prevent duplicate reports
 
 const DailyReport = mongoose.model("DailyReport", dailyReportSchema);
 

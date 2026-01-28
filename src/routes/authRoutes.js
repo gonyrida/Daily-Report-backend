@@ -10,6 +10,11 @@ const {
   changePassword,
   verifyToken,
   testEmail,
+  getLoginHistory,
+  revokeSession,
+  revokeAllSessions,
+  deactivateAccount,
+  deleteAccount,
 } = require("../controllers/authController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 const { passwordResetRateLimit, passwordResetConfirmRateLimit } = require("../middleware/rateLimiter");
@@ -29,5 +34,10 @@ router.get("/profile", authenticateToken, getProfile);
 router.put("/profile", authenticateToken, updateProfile);
 router.put("/change-password", authenticateToken, changePassword);
 router.get("/verify", authenticateToken, verifyToken);
+router.get("/login-history", authenticateToken, getLoginHistory);
+router.post("/revoke-session/:sessionId", authenticateToken, revokeSession);
+router.post("/revoke-all-sessions", authenticateToken, revokeAllSessions);
+router.post("/deactivate-account", authenticateToken, deactivateAccount);
+router.delete("/delete-account", authenticateToken, deleteAccount);
 
 module.exports = router;
