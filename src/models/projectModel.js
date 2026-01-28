@@ -46,7 +46,7 @@ const projectSchema = new mongoose.Schema({
 
 // Index for better query performance
 projectSchema.index({ isActive: 1 });  // ← Remove createdBy from index since we're not filtering by it
-projectSchema.index({ name: 1 }, { unique: true });
+projectSchema.index({ name: 1 }); // ← Remove unique constraint
 
 const Project = mongoose.model('Project', projectSchema);
 

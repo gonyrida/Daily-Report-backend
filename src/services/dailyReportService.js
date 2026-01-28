@@ -647,8 +647,7 @@ const deleteReport = async (userId, reportId) => {
       
       // Get remaining report count for this project
       const remainingReports = await DailyReport.countDocuments({
-        projectName: report.projectName,
-        userId: userId
+        projectName: report.projectName  // ← Count ALL reports in project
       });
       
       await Project.findOneAndUpdate(
@@ -685,6 +684,7 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
     let searchQuery = search ? {
       $and: [
         { companyId },
+        { status: "submitted" },  // ← ADD THIS
         {
           $or: [
             { projectName: { $regex: search, $options: "i" } },
@@ -694,7 +694,10 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
           ]
         }
       ]
-    } : { companyId };
+    } : { 
+      companyId,
+      status: "submitted"  // ← ADD THIS
+    };
     // ADD PROJECT FILTER
     if (projectFilter) {
       searchQuery = {

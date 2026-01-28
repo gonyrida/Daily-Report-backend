@@ -1,4 +1,5 @@
 const Project = require('../models/projectModel');
+const DailyReport = require('../models/dailyReportModel');
 
 // @desc    Create a new project
 // @route   POST /api/projects
@@ -55,22 +56,36 @@ exports.createProject = async (req, res) => {
 exports.getUserProjects = async (req, res) => {
   try {
     const projects = await Project.find({ 
-      isActive: true  // ← Remove createdBy filter for company-wide access
+      isActive: true
     })
     .sort({ updatedAt: -1 })
-    .select('-__v'); // Exclude version field
+    .select('-__v');
+    
+    // 🚀 NEW: Calculate submitted report count for each project
+    const projectsWithSubmittedCount = await Promise.all(
+      projects.map(async (project) => {
+        const submittedCount = await DailyReport.countDocuments({
+          projectName: project.name,
+          status: "submitted"
+        });
+        
+        return {
+          ...project.toObject(),
+          reportCount: submittedCount  // ← Override with submitted count
+        };
+      })
+    );
     
     res.status(200).json({
       success: true,
-      count: projects.length,
-      data: projects
+      count: projectsWithSubmittedCount.length,
+      data: projectsWithSubmittedCount
     });
     
   } catch (error) {
     console.error('Get projects error:', error);
     res.status(500).json({ 
-      error: 'Failed to fetch projects',
-      details: error.message 
+      error: 'Server error retrieving projects' 
     });
   }
 };
@@ -89,11 +104,27 @@ exports.updateProject = async (req, res) => {
       });
     }
     
-    // Check if new name already exists for ANY user (excluding current project)
+    // Get current project to get old name
+    const currentProject = await Project.findOne({ 
+      _id: id, 
+      createdBy: req.user.userId, 
+      isActive: true 
+    });
+    
+    if (!currentProject) {
+      return res.status(404).json({ 
+        error: 'Project not found' 
+      });
+    }
+    
+    const oldName = currentProject.name;
+    const newName = name.trim();
+    
+    // Check if new name already exists
     const existingProject = await Project.findOne({ 
-      name: name.trim(), 
+      name: newName, 
       isActive: true,
-      _id: { $ne: id } // Exclude current project
+      _id: { $ne: id }
     });
     
     if (existingProject) {
@@ -102,32 +133,43 @@ exports.updateProject = async (req, res) => {
       });
     }
     
+    // Update project name
     const project = await Project.findOneAndUpdate(
       { _id: id, createdBy: req.user.userId, isActive: true },
       { 
-        name: name.trim(),
+        name: newName,
         updatedAt: new Date()
       },
       { new: true, runValidators: true }
     );
     
-    if (!project) {
-      return res.status(404).json({ 
-        error: 'Project not found' 
-      });
+    // 🚀 NEW: Update all reports with the old project name
+    let updateResult = null;
+    if (oldName !== newName) {
+      const DailyReport = require('../models/dailyReportModel');
+      
+      const updateResult = await DailyReport.updateMany(
+        { 
+          projectName: oldName  // ← Remove userId filter to update ALL users' reports
+        },
+        { 
+          $set: { projectName: newName }
+        }
+      );
+      
+      console.log(`Updated ${updateResult.modifiedCount} reports from "${oldName}" to "${newName}"`);
     }
     
     res.status(200).json({
       success: true,
       data: project,
-      message: 'Project updated successfully'
+      message: `Project updated successfully${oldName !== newName ? ` and ${updateResult?.modifiedCount || 0} reports updated` : ''}`
     });
     
   } catch (error) {
     console.error('Update project error:', error);
     res.status(500).json({ 
-      error: 'Failed to update project',
-      details: error.message 
+      error: 'Server error updating project' 
     });
   }
 };
