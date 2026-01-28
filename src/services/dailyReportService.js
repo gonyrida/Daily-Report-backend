@@ -39,6 +39,17 @@ const recalculateFutureReports = async (userId, futureReports, session) => {
       previousReport?.managementTeam || []
     );
 
+    currentReport.workingTeamInterior = recalculateRollingTotals(
+      currentReport.workingTeamInterior || [],
+      previousReport?.workingTeamInterior || []
+    );
+
+    currentReport.workingTeamMEP = recalculateRollingTotals(
+      currentReport.workingTeamMEP || [],
+      previousReport?.workingTeamMEP || []
+    );
+
+    // Keep backward compatibility for old workingTeam
     currentReport.workingTeam = recalculateRollingTotals(
       currentReport.workingTeam || [],
       previousReport?.workingTeam || []
@@ -63,6 +74,21 @@ const recalculateFutureReports = async (userId, futureReports, session) => {
  */
 const getAllReports = async (userId) => {
   return await DailyReport.find({ userId }).sort({ reportDate: -1 });
+};
+
+/**
+ * Get a specific report by ID and userId
+ */
+const getReportById = async (userId, reportId, companyId) => {
+  // First try to find user's own report
+  let report = await DailyReport.findOne({ _id: reportId, userId });
+  
+  // If not found and user has companyId, try company-wide access
+  if (!report && companyId) {
+    report = await DailyReport.findOne({ _id: reportId, companyId });
+  }
+  
+  return report;
 };
 
 /**
@@ -133,7 +159,7 @@ const getReportByDateOnly = async (reportDate) => {
  * Save or update a report with rolling totals recalculation
  * Uses transactions to prevent race conditions
  */
-const saveOrUpdateReport = async (userId, reportData) => {
+const saveOrUpdateReport = async (userId, reportData, companyId) => {
   console.log("DEBUG BACKEND SERVICE: saveOrUpdateReport called with:", {
     userId,
     projectName: reportData.projectName,
@@ -208,6 +234,17 @@ const saveOrUpdateReport = async (userId, reportData) => {
       previousReport?.managementTeam || []
     );
 
+    const workingTeamInterior = calculateRollingTotals(
+      reportData.workingTeamInterior || [],
+      previousReport?.workingTeamInterior || []
+    );
+
+    const workingTeamMEP = calculateRollingTotals(
+      reportData.workingTeamMEP || [],
+      previousReport?.workingTeamMEP || []
+    );
+
+    // Keep backward compatibility for old workingTeam
     const workingTeam = calculateRollingTotals(
       reportData.workingTeam || [],
       previousReport?.workingTeam || []
@@ -231,8 +268,11 @@ const saveOrUpdateReport = async (userId, reportData) => {
       );
       report.set({
         ...reportData,
+        companyId: companyId, // ← ADD THIS (ensures existing reports get companyId)
         managementTeam,
-        workingTeam,
+        workingTeamInterior,
+        workingTeamMEP,
+        workingTeam, // Keep backward compatibility
         materials,
         machinery,
         reportDate: inputDate,
@@ -244,19 +284,41 @@ const saveOrUpdateReport = async (userId, reportData) => {
       console.log("DEBUG BACKEND SERVICE: Creating new report");
       report = new DailyReport({
         userId,
+        companyId, // ← ADD THIS
         ...reportData,
         managementTeam,
-        workingTeam,
+        workingTeamInterior,
+        workingTeamMEP,
+        workingTeam, // Keep backward compatibility
         materials,
         machinery,
         reportDate: inputDate,
         status: "draft",
       });
       await report.save({ session });
-      console.log(
-        "DEBUG BACKEND SERVICE: New report created with ID:",
-        report._id
-      );
+      console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
+      
+      // 🚀 NEW: Update project statistics for new reports
+      try {
+        const Project = require('../models/projectModel');
+        await Project.findOneAndUpdate(
+          { 
+            name: reportData.projectName, 
+            isActive: true 
+          },
+          { 
+            $inc: { reportCount: 1 },
+            $set: { lastReportDate: inputDate }
+          },
+          { 
+            new: true,
+            upsert: false
+          }
+        );
+        console.log("DEBUG BACKEND SERVICE: Project stats updated for:", reportData.projectName);
+      } catch (projectError) {
+        console.error("DEBUG BACKEND SERVICE: Failed to update project stats:", projectError);
+      }
     }
 
     // Check if there are future reports that need recalculation
@@ -288,117 +350,363 @@ const saveOrUpdateReport = async (userId, reportData) => {
 
 /**
  * Submit a report
- * Marks the report as 'submitted'
+ * Marks the report as 'submitted' and validates required fields
  */
 const submitDailyReport = async (userId, projectName, reportDate) => {
   // DEBUG 4: What is Mongoose actually about to save?
-  console.log("DEBUG BACKEND SERVICE: Saving to DB ->", {
+  console.log("DEBUG BACKEND SERVICE: Submitting report ->", {
     userId,
     projectName,
     reportDate: reportDate.toISOString(),
   });
 
-  // We use "upsert: true" so it creates the report if it's missing
-  const report = await DailyReport.findOneAndUpdate(
-    { userId, projectName, reportDate },
-    {
-      status: "submitted",
-      submittedAt: new Date(),
-    },
-    {
-      new: true, // Return the updated document to the controller
-      upsert: true, // Create it if it doesn't exist (prevents 404)
-      setDefaultsOnInsert: true,
-    }
-  );
+  try {
+    // First, find the existing report to validate it
+    const existingReport = await DailyReport.findOne({
+      userId,
+      projectName,
+      reportDate,
+    });
 
-  return report;
+    if (!existingReport) {
+      throw new Error("Report not found. Please create a report first.");
+    }
+
+    // Validate required fields before submitting
+    if (!existingReport.activityToday || existingReport.activityToday.trim() === "") {
+      throw new Error("Activity Today is required before submitting the report");
+    }
+
+    // Update the report with submitted status and timestamp
+    existingReport.status = "submitted";
+    existingReport.submittedAt = new Date();
+    
+    await existingReport.save();
+    
+    console.log("DEBUG BACKEND SERVICE: Report submitted successfully:", existingReport._id);
+    return existingReport;
+  } catch (error) {
+    console.error("DEBUG BACKEND SERVICE: Error submitting report:", error);
+    throw error;
+  }
 };
 
 /**
- * Create a new report with rolling totals for a specific user
+ * Create a new report with default/empty data
+ * Always creates a new report, allows multiple reports per date/project
  */
-const createReport = async (userId, reportData) => {
-  if (!userId) {
-    throw new Error("userId is required");
-  }
-  
-  const { projectName, reportDate } = reportData;
-
-  if (!projectName || !reportDate) {
-    throw new Error("projectName and reportDate are required");
-  }
-
-  // Normalize the incoming reportDate to UTC Midnight
-  const d = new Date(reportDate);
-  const normalizedDate = new Date(
-    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)
-  );
-
-  // Update the reportData with the clean UTC date
-  reportData.reportDate = normalizedDate;
-
-  // Fetch the previous report for the same user and project
-  const previousReport = await DailyReport.findOne({ userId, projectName }).sort({
-    reportDate: -1,
-  });
-
-  // Helper function to calculate rolling totals for one array
-  const calculateRollingTotals = (newItems, previousItems = []) => {
-    return newItems.map((item) => {
-      const prevItem = previousItems.find(
-        (p) => p.description === item.description
-      );
-      const prevAccum = prevItem?.accumulated || 0;
-      const today = Number(item.today) || 0;
-      return {
-        ...item,
-        prev: prevAccum,
-        accumulated: prevAccum + today,
-      };
+const createNewReport = async (userId, projectName, reportDate, companyId) => {
+  try {
+    console.log("DEBUG BACKEND SERVICE: Creating new report for:", {
+      userId,
+      projectName,
+      reportDate,
     });
-  };
 
-  // Process all arrays
-  const managementTeam = calculateRollingTotals(
-    reportData.managementTeam || [],
-    previousReport?.managementTeam || []
-  );
+    // No longer checking for existing reports - allow multiple reports per date/project
+    // Create new report with default values
+    const report = new DailyReport({
+      userId,
+      companyId,
+      projectName: projectName || "Default Project",
+      reportDate,
+      status: "draft",
+      // Weather fields
+      weatherAM: "",
+      weatherPM: "",
+      tempAM: "",
+      tempPM: "",
+      currentPeriod: "AM",
+      // Activity fields (with empty defaults to satisfy validation)
+      activityToday: "",
+      workPlanNextDay: "",
+      // Resource arrays (empty by default)
+      managementTeam: [],
+      workingTeamInterior: [],
+      workingTeamMEP: [],
+      workingTeam: [], // Keep backward compatibility
+      materials: [],
+      machinery: [],
+      // Optional fields for backward compatibility
+      weather: "",
+      weatherPeriod: "AM",
+      temperature: "",
+    });
 
-  const workingTeam = calculateRollingTotals(
-    reportData.workingTeam || [],
-    previousReport?.workingTeam || []
-  );
+    await report.save();
+    
+    // 🚀 NEW: Update project statistics
+    try {
+      const Project = require('../models/projectModel');
+      await Project.findOneAndUpdate(
+        { 
+          name: projectName, 
+          isActive: true 
+        },
+        { 
+          $inc: { reportCount: 1 },  // ← Increment count
+          $set: { lastReportDate: reportDate }  // ← Update last report date
+        },
+        { 
+          new: true,  // Return updated document
+          upsert: false  // Don't create if project doesn't exist
+        }
+      );
+      console.log("DEBUG BACKEND SERVICE: Project stats updated for:", projectName);
+    } catch (projectError) {
+      console.error("DEBUG BACKEND SERVICE: Failed to update project stats:", projectError);
+      // Don't fail the report creation if project update fails
+    }
+    
+    console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
+    return report;
+  } catch (error) {
+    console.error("DEBUG BACKEND SERVICE: Error creating new report:", error);
+    throw error;
+  }
+};
 
-  const materials = calculateRollingTotals(
-    reportData.materials || [],
-    previousReport?.materials || []
-  );
+/**
+ * Auto-save report (partial update) - optimized for frequent saves
+ * Only updates changed fields, maintains rolling totals
+ */
+const autoSaveReport = async (userId, reportId, partialData) => {
+  try {
+    console.log("DEBUG BACKEND SERVICE: Auto-saving report:", { userId, reportId });
+    
+    const session = await DailyReport.startSession();
+    session.startTransaction();
 
-  const machinery = calculateRollingTotals(
-    reportData.machinery || [],
-    previousReport?.machinery || []
-  );
+    try {
+      // Find existing report
+      const report = await DailyReport.findOne({ _id: reportId, userId }).session(session);
+      
+      if (!report) {
+        throw new Error("Report not found for auto-save");
+      }
 
-  // Create the new report with calculated totals
-  const report = new DailyReport({
-    userId,
-    ...reportData,
-    managementTeam,
-    workingTeam,
-    materials,
-    machinery,
-    status: "draft", // keep draft initially
-  });
+      // Only update fields that are provided in partialData
+      const updates = {};
+      Object.keys(partialData).forEach(key => {
+        if (partialData[key] !== undefined) {
+          updates[key] = partialData[key];
+        }
+      });
 
-  return await report.save();
+      // Update timestamp and status if needed
+      updates.updatedAt = new Date();
+      if (report.status === 'submitted' && partialData.status !== 'submitted') {
+        updates.status = 'draft'; // Revert to draft if edited after submitting
+      }
+
+      // Apply updates using report.set() to ensure Mongoose change tracking
+      report.set(updates);
+
+      await report.save({ session });
+      await session.commitTransaction();
+      
+      console.log("DEBUG BACKEND SERVICE: Auto-save completed:", report._id);
+      return report;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
+  } catch (error) {
+    console.error("DEBUG BACKEND SERVICE: Auto-save error:", error);
+    throw error;
+  }
+};
+
+/**
+ * Get recent reports for dashboard, sorted by updatedAt
+ */
+const getRecentReports = async (userId, limit = 20, statusFilter = null) => {
+  try {
+    const query = { userId };
+    
+    if (statusFilter) {
+      query.status = statusFilter;
+    }
+
+    const reports = await DailyReport.find(query)
+      .sort({ updatedAt: -1 })
+      .limit(limit)
+      .select('projectName reportDate status updatedAt createdAt submittedAt');
+
+    return reports;
+  } catch (error) {
+    console.error("DEBUG BACKEND SERVICE: Error fetching recent reports:", error);
+    throw error;
+  }
+};
+
+/**
+ * Create blank draft report immediately (Google Docs style)
+ */
+const createBlankReport = async (userId, projectName = null) => {
+  try {
+    console.log("DEBUG BACKEND SERVICE: Creating blank report for:", { userId, projectName });
+
+    const report = new DailyReport({
+      userId,
+      projectName: projectName || "Untitled Report",
+      reportDate: new Date(),
+      status: "draft",
+      // Minimal default data
+      weatherAM: "",
+      weatherPM: "",
+      tempAM: "",
+      tempPM: "",
+      currentPeriod: "AM",
+      activityToday: "",
+      workPlanNextDay: "",
+      managementTeam: [],
+      workingTeamInterior: [],
+      workingTeamMEP: [],
+      workingTeam: [], // Keep backward compatibility
+      materials: [],
+      machinery: [],
+    });
+
+    await report.save();
+    
+    console.log("DEBUG BACKEND SERVICE: Blank report created:", report._id);
+    return report;
+  } catch (error) {
+    console.error("DEBUG BACKEND SERVICE: Error creating blank report:", error);
+    throw error;
+  }
+};
+
+const deleteReport = async (userId, reportId) => {
+  try {
+    console.log("DEBUG BACKEND SERVICE: Deleting report:", { userId, reportId });
+    
+    // First get the report to get project name before deletion
+    const report = await DailyReport.findOne({
+      _id: reportId,
+      userId: userId, // Ensure user can only delete their own reports
+    });
+    
+    if (!report) {
+      console.log("DEBUG BACKEND SERVICE: Report not found for deletion");
+      return null;
+    }
+    
+    // Delete the report
+    const result = await DailyReport.findOneAndDelete({
+      _id: reportId,
+      userId: userId,
+    });
+    
+    // 🚀 NEW: Update project statistics
+    try {
+      const Project = require('../models/projectModel');
+      
+      // Get remaining report count for this project
+      const remainingReports = await DailyReport.countDocuments({
+        projectName: report.projectName  // ← Count ALL reports in project
+      });
+      
+      await Project.findOneAndUpdate(
+        { 
+          name: report.projectName, 
+          isActive: true 
+        },
+        { 
+          $set: { 
+            reportCount: Math.max(0, remainingReports),  // ← Update count
+            lastReportDate: remainingReports > 0 ? report.reportDate : null  // ← Update or clear date
+          }
+        },
+        { new: true }
+      );
+      console.log("DEBUG BACKEND SERVICE: Project stats updated after deletion for:", report.projectName);
+    } catch (projectError) {
+      console.error("DEBUG BACKEND SERVICE: Failed to update project stats after deletion:", projectError);
+    }
+    
+    console.log("DEBUG BACKEND SERVICE: Report deleted successfully");
+    return result;
+  } catch (error) {
+    console.error("DEBUG BACKEND SERVICE: Error deleting report:", error);
+    throw error;
+  }
+};
+
+const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+  try {
+    const skip = (page - 1) * limit;
+    
+    // Build search query
+    let searchQuery = search ? {
+      $and: [
+        { companyId },
+        { status: "submitted" },  // ← ADD THIS
+        {
+          $or: [
+            { projectName: { $regex: search, $options: "i" } },
+            { activityToday: { $regex: search, $options: "i" } },
+            { "userId.firstName": { $regex: search, $options: "i" } },
+            { "userId.lastName": { $regex: search, $options: "i" } }
+          ]
+        }
+      ]
+    } : { 
+      companyId,
+      status: "submitted"  // ← ADD THIS
+    };
+    // ADD PROJECT FILTER
+    if (projectFilter) {
+      searchQuery = {
+        $and: [
+          searchQuery,
+          { projectName: projectFilter }
+        ]
+      };
+    }
+    const [reports, total] = await Promise.all([
+      DailyReport.find(searchQuery)
+        .sort({ reportDate: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('userId', 'firstName lastName email'),
+      DailyReport.countDocuments(searchQuery)
+    ]);
+    
+    return {
+      success: true,
+      data: reports,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit),
+        hasNext: page < Math.ceil(total / limit),
+        hasPrev: page > 1
+      }
+    };
+  } catch (error) {
+    console.error("Get company reports error:", error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
 };
 
 module.exports = {
   getAllReports,
+  getReportById,
   getReportByDate,
-  getReportByDateOnly,
   saveOrUpdateReport,
   submitDailyReport,
-  createReport,
+  createNewReport,
+  deleteReport,
+  autoSaveReport,
+  getRecentReports,
+  createBlankReport,
+  getCompanyReports,
 };

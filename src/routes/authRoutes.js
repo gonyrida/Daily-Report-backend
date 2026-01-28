@@ -12,14 +12,15 @@ const {
   testEmail,
 } = require("../controllers/authController");
 const { authenticateToken } = require("../middleware/authMiddleware");
+const { passwordResetRateLimit, passwordResetConfirmRateLimit } = require("../middleware/rateLimiter");
 
 const router = express.Router();
 
 // Public routes
 router.post("/register", register);
 router.post("/login", login); // Make sure this line exists
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password", resetPassword);
+router.post("/forgot-password", passwordResetRateLimit, forgotPassword);
+router.post("/reset-password", passwordResetConfirmRateLimit, resetPassword);
 router.post("/test-email", testEmail); // For testing email functionality
 
 // Protected routes

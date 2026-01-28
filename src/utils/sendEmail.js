@@ -1,32 +1,30 @@
 const nodemailer = require("nodemailer");
+const config = require("../config/env"); // import your config
 
 const sendEmail = async ({ to, subject, html }) => {
   try {
     console.log("📧 Attempting to send email to:", to);
-    console.log(
-      "📧 Email config - Host:",
-      process.env.EMAIL_HOST,
-      "Port:",
-      process.env.EMAIL_PORT,
-      "User:",
-      process.env.EMAIL_USER
-    );
+    console.log("📧 Email config -", {
+      host: config.EMAIL_HOST,
+      port: config.EMAIL_PORT,
+      user: config.EMAIL_USER,
+      passExists: !!config.EMAIL_PASS,
+      from: config.EMAIL_FROM,
+    });
 
     const transporter = nodemailer.createTransport({
-      host: process.env.EMAIL_HOST,
-      port: process.env.EMAIL_PORT,
-      secure: true, // Use SSL for port 465
+      host: config.EMAIL_HOST,
+      port: config.EMAIL_PORT,
+      secure: config.EMAIL_PORT == 465, // true for 465 SSL, false for 587 TLS
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: config.EMAIL_USER,
+        pass: config.EMAIL_PASS,
       },
-      // Modern TLS settings for security
       tls: {
         minVersion: "TLSv1.2",
         ciphers:
           "HIGH:!aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:!PSK:!SRP:!CAMELLIA",
       },
-      // Enable debug logging
       debug: true,
       logger: true,
     });
@@ -36,7 +34,7 @@ const sendEmail = async ({ to, subject, html }) => {
     console.log("✅ Email transporter verified successfully");
 
     const mailOptions = {
-      from: `"CACPM Support" <${process.env.EMAIL_USER}>`,
+      from: `"CACPM Support" <${config.EMAIL_FROM}>`,
       to,
       subject,
       html,
@@ -56,7 +54,6 @@ const sendEmail = async ({ to, subject, html }) => {
   } catch (error) {
     console.error("❌ Email sending failed:", error.message);
     console.error("❌ Error details:", error);
-    // Ensure error is thrown with full details for debugging
     throw new Error(`Email sending failed: ${error.message}`);
   }
 };

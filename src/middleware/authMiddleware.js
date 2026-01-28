@@ -3,15 +3,33 @@ const { JWT_SECRET } = require("../config/env");
 const User = require("../models/userModel");
 const TokenBlacklist = require("../models/tokenBlacklistModel");
 
-// Middleware to authenticate JWT tokens from cookies ONLY
+// Middleware to authenticate JWT tokens from cookies
 const authenticateToken = async (req, res, next) => {
   try {
-    console.log("AUTH MIDDLEWARE: Starting authentication");
-    console.log("AUTH MIDDLEWARE: Cookies:", req.cookies);
-    
-    // ONLY read JWT from cookies - NEVER fallback to headers
-    const token = req.cookies?.access_token;
-    
+    console.log("DEBUG AUTH MIDDLEWARE: Checking authentication");
+    console.log("DEBUG AUTH MIDDLEWARE: Cookies:", req.cookies);
+
+    // Try to get token from cookie first (cookie-based auth)
+    let token = req.cookies?.token;
+
+    // Fallback to Authorization header if no cookie (for backward compatibility)
+    if (!token) {
+      const authHeader = req.headers.authorization;
+      token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
+      console.log(
+        "DEBUG AUTH MIDDLEWARE: No cookie token, trying header:",
+        authHeader ? "PRESENT" : "MISSING"
+      );
+    }
+
+    // Fallback to custom header for localStorage tokens
+    if (!token) {
+      token = req.headers['x-auth-token'];
+      console.log("DEBUG AUTH MIDDLEWARE: Trying custom header:", token ? "PRESENT" : "MISSING");
+    }
+
+    console.log("DEBUG AUTH MIDDLEWARE: Token:", token ? "PRESENT" : "MISSING");
+
     if (!token) {
       console.log("AUTH MIDDLEWARE: No token found in cookies - returning 401");
       return res.status(401).json({
@@ -42,6 +60,7 @@ const authenticateToken = async (req, res, next) => {
     
     // Check if user still exists
     const user = await User.findById(decoded.userId);
+    console.log("DEBUG AUTH MIDDLEWARE: User found:", user ? "YES" : "NO");
 
     if (!user || !user.isActive) {
       console.log("AUTH MIDDLEWARE: User not found or inactive - returning 401");
@@ -51,16 +70,21 @@ const authenticateToken = async (req, res, next) => {
       });
     }
 
-    console.log("AUTH MIDDLEWARE: Authentication successful");
-    
-    // Add user and token to request object
-    req.user = decoded;
-    req.token = token;
+    // Add user to request object with full user info
+    req.user = {
+      ...decoded,
+      name: `${user.firstName} ${user.lastName}`,  // Combine first + last name
+      email: user.email,      // Add user's email
+      id: decoded.userId     // For backward compatibility
+    };
+    console.log(
+      "DEBUG AUTH MIDDLEWARE: Authentication successful, user:",
+      req.user
+    );
     next();
   } catch (error) {
-    console.log("AUTH MIDDLEWARE: Error in authentication:", error.name, error.message);
-    
-    // PROPER ERROR HANDLING: Return 401 for ALL authentication failures
+    console.log("DEBUG AUTH MIDDLEWARE: Authentication error:", error);
+
     if (error.name === "TokenExpiredError") {
       console.log("AUTH MIDDLEWARE: Token expired - returning 401");
       return res.status(401).json({

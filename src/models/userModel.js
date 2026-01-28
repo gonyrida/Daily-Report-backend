@@ -31,11 +31,24 @@ const userSchema = new mongoose.Schema(
       enum: ["admin", "user"],
       default: "user",
     },
+    companyId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Company',
+      required: false, // ← IMPORTANT: Optional for existing users
+    },
     isActive: {
       type: Boolean,
       default: true,
     },
     lastLogin: {
+      type: Date,
+      default: null,
+    },
+    resetVersion: {
+      type: Number,
+      default: 0,
+    },
+    passwordResetAt: {
       type: Date,
       default: null,
     },
@@ -51,6 +64,10 @@ userSchema.pre("save", async function () {
 
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
+  
+  // Increment reset version and set reset timestamp when password changes
+  this.resetVersion = (this.resetVersion || 0) + 1;
+  this.passwordResetAt = new Date();
 });
 
 // Compare password method
@@ -68,6 +85,7 @@ userSchema.methods.toJSON = function () {
 // Indexes
 userSchema.index({ email: 1 }, { unique: true });
 userSchema.index({ createdAt: 1 });
+userSchema.index({ companyId: 1 });
 
 const User = mongoose.model("User", userSchema);
 

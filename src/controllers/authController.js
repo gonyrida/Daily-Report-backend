@@ -3,7 +3,8 @@ const User = require("../models/userModel");
 const PasswordReset = require("../models/passwordResetModel");
 const TokenBlacklist = require("../models/tokenBlacklistModel");
 const generateToken = require("../utils/generateToken");
-const generateRefreshToken = require("../utils/generateRefreshToken");
+const { generatePasswordResetToken, verifyPasswordResetToken, isTokenVersionValid } = require("../utils/generateResetToken");
+const { validatePasswordStrength } = require("../utils/passwordValidator");
 const crypto = require("crypto");
 const env = require("../config/env");
 
@@ -68,12 +69,21 @@ exports.register = async (req, res) => {
     console.log("✅ No existing user, creating new user...");
 
     // Create user
-    const user = new User({
+    const userData = {
       email: email.toLowerCase(),
       password,
       firstName,
       lastName,
-    });
+    };
+
+    // Add companyId for development testing
+    const TEST_COMPANY_ID = "6975e43e400dcc89c6f92463"; // ← Replace with your actual ObjectId
+    if (process.env.NODE_ENV === 'development') {
+      userData.companyId = TEST_COMPANY_ID;
+      console.log('🔧 DEV MODE: Assigned test company to new user:', TEST_COMPANY_ID);
+    }
+
+    const user = new User(userData);
 
     console.log("💾 Saving user to database...");
     await user.save();
@@ -159,18 +169,20 @@ exports.login = async (req, res) => {
 
     // Generate tokens
     const token = generateToken(user);
-    const refreshToken = generateRefreshToken(user);
 
-    // Set JWT cookie
-    const { setTokenCookie } = require("../middleware/authMiddleware");
-    setTokenCookie(res, token);
+    // Set HTTP-only cookie with the token
+    res.cookie("token", token, {
+      httpOnly: true, // Prevents JavaScript access (XSS protection)
+      secure: process.env.NODE_ENV === "production", // HTTPS only in production
+      sameSite: "strict", // CSRF protection
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+    });
 
     res.status(200).json({
       success: true,
       message: "Login successful",
-      token, // Include JWT token for frontend Python API access
-      refreshToken, // Send refresh token for token renewal
       user: user.toJSON(),
+      token: token,
     });
   } catch (error) {
     console.error("Login error:", error);
@@ -187,18 +199,12 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.logout = async (req, res) => {
   try {
-    // Blacklist the current token
-    if (req.token) {
-      await TokenBlacklist.create({
-        token: req.token,
-        userId: req.user.userId,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-      });
-    }
-
-    // Clear the cookie
-    const { clearTokenCookie } = require("../middleware/authMiddleware");
-    clearTokenCookie(res);
+    // Clear the authentication cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+    });
 
     res.status(200).json({
       success: true,
@@ -337,10 +343,9 @@ exports.changePassword = async (req, res) => {
 // @access  Public
 exports.forgotPassword = async (req, res) => {
   try {
-    console.log("🚀 forgotPassword called", req.body); // ✅ already added
+    console.log("🚀 forgotPassword called", { email: req.body.email });
 
     const { email } = req.body;
-    console.log("📧 Email received:", email);
 
     if (!email) {
       console.log("⚠️ No email provided in request body");
@@ -350,86 +355,105 @@ exports.forgotPassword = async (req, res) => {
       });
     }
 
-    // Find user
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+    }
+
+    // Find user (but don't reveal if exists or not)
     const user = await User.findOne({ email: email.toLowerCase() });
-    console.log("🔍 User found:", user ? user.email : "No user found");
+    console.log("🔍 User lookup completed for:", email.toLowerCase());
 
-    // Generate reset token
-    const resetToken = crypto.randomBytes(32).toString("hex");
-    console.log("🔑 Generated reset token:", resetToken);
+    // Always return the same response regardless of whether user exists
+    const responseMessage = "If that email exists, a reset link has been sent";
 
-    const hashedToken = crypto
-      .createHash("sha256")
-      .update(resetToken)
-      .digest("hex");
+    if (user && user.isActive) {
+      try {
+        // Generate JWT reset token
+        const resetToken = generatePasswordResetToken(user);
+        console.log("🔑 Generated JWT reset token for user:", user._id);
 
-    // Save reset token to database
-    const resetRecord = await PasswordReset.create({
-      userId: user._id,
-      token: hashedToken,
-      expiresAt: new Date(Date.now() + 3600000), // 1 hour
-    });
-    console.log("💾 Reset token saved in DB:", resetRecord);
+        // Store token reference in database for audit trail
+        await PasswordReset.create({
+          userId: user._id,
+          token: crypto.createHash("sha256").update(resetToken).digest("hex"),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+          used: false,
+        });
 
-    // Prepare email
-    const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
-    console.log("🔗 Reset URL to send:", resetUrl);
+        // Prepare reset URL
+        const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+        console.log("🔗 Reset URL generated");
 
-    const htmlTemplate = `
-      <!DOCTYPE html>
-      <html lang="en">
-      <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Password Reset - CACPM</title>
-        <style>
-          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
-          .header { background-color: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-          .content { background-color: #f8f9fa; padding: 20px; border-radius: 0 0 5px 5px; }
-          .button { display: inline-block; background-color: #28a745; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <h1>CACPM Password Reset</h1>
-        </div>
-        <div class="content">
-          <p>Hello,</p>
-          <p>You have requested to reset your password for your CACPM account.</p>
-          <p>Please click the button below to reset your password:</p>
-          <a href="${resetUrl}" class="button">Reset Password</a>
-          <p>If the button doesn't work, copy and paste this link into your browser:</p>
-          <p><a href="${resetUrl}">${resetUrl}</a></p>
-          <p>This link will expire in 1 hour for security reasons.</p>
-          <p>If you didn't request this password reset, please ignore this email.</p>
-        </div>
-        <div class="footer">
-          <p>&copy; 2024 CACPM. All rights reserved.</p>
-        </div>
-      </body>
-      </html>
-    `;
+        // Send email
+        const htmlTemplate = `
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Password Reset - CACPM</title>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; }
+              .header { background-color: #007bff; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+              .content { background-color: #f8f9fa; padding: 20px; border-radius: 0 0 5px 5px; }
+              .button { display: inline-block; background-color: #28a745; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; margin: 20px 0; font-weight: bold; }
+              .footer { font-size: 12px; color: #666; text-align: center; margin-top: 20px; }
+              .warning { background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 10px; border-radius: 5px; margin: 10px 0; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>CACPM Password Reset</h1>
+            </div>
+            <div class="content">
+              <p>Hello,</p>
+              <p>You have requested to reset your password for your CACPM account.</p>
+              <p>Please click the button below to reset your password:</p>
+              <a href="${resetUrl}" class="button">Reset Password</a>
+              <p>If the button doesn't work, copy and paste this link into your browser:</p>
+              <p><a href="${resetUrl}">${resetUrl}</a></p>
+              <div class="warning">
+                <p><strong>⚠️ Security Notice:</strong></p>
+                <ul>
+                  <li>This link will expire in 10 minutes for security reasons</li>
+                  <li>You can only use this link once</li>
+                  <li>If you didn't request this password reset, please ignore this email</li>
+                </ul>
+              </div>
+            </div>
+            <div class="footer">
+              <p>&copy; 2024 CACPM. All rights reserved.</p>
+            </div>
+          </body>
+          </html>
+        `;
 
-    // Send email
-    await sendEmail({
-      to: user.email,
-      subject: "Password Reset Request - CACPM",
-      html: htmlTemplate,
-    });
-    console.log("✅ Password reset email sent successfully to:", user.email);
+        await sendEmail({
+          to: user.email,
+          subject: "Password Reset Request - CACPM",
+          html: htmlTemplate,
+        });
+        console.log("✅ Password reset email sent successfully to:", user.email);
+      } catch (emailError) {
+        console.error("❌ Failed to send password reset email:", emailError);
+        // Still return generic message to avoid revealing user existence
+      }
+    }
 
     res.status(200).json({
       success: true,
-      message: "If that email exists, a reset link has been sent",
-      resetToken: process.env.NODE_ENV === "development" ? resetToken : undefined,
+      message: responseMessage,
     });
-
   } catch (error) {
     console.error("❌ Forgot password error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error processing password reset",
+      message: "Server error processing password reset request",
     });
   }
 };
@@ -440,61 +464,106 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
-    console.log("🚀 resetPassword called", req.body);
+    console.log("🚀 resetPassword called", { tokenLength: token?.length });
 
     if (!token || !newPassword) {
       return res.status(400).json({
         success: false,
-        message: "Token and new password are required",
+        message: "Reset token and new password are required",
       });
     }
 
-    if (newPassword.length < 8) {
+    // Validate password strength
+    const passwordValidation = validatePasswordStrength(newPassword);
+    if (!passwordValidation.isValid) {
       return res.status(400).json({
         success: false,
-        message: "Password must be at least 8 characters",
+        message: "Password does not meet security requirements",
+        errors: passwordValidation.errors,
       });
     }
 
-    // Hash the token from request
-    const hashedToken = crypto.createHash("sha256").update(token).digest("hex");
-
-    // Find valid reset token
-    const resetRecord = await PasswordReset.findOne({
-      token: hashedToken,
-      expiresAt: { $gt: new Date() },
-      used: false,
-    });
-
-    if (!resetRecord) {
+    let decodedToken;
+    try {
+      decodedToken = verifyPasswordResetToken(token);
+      console.log("✅ Token verified for user:", decodedToken.userId);
+    } catch (tokenError) {
+      console.log("❌ Token verification failed:", tokenError.message);
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired reset token",
+        message: tokenError.message,
       });
     }
 
-    // Find user and update password
-    const user = await User.findById(resetRecord.userId);
+    // Find user
+    const user = await User.findById(decodedToken.userId);
     if (!user) {
+      console.log("❌ User not found for token:", decodedToken.userId);
       return res.status(404).json({
         success: false,
         message: "User not found",
       });
     }
 
+    // Check if user account is active
+    if (!user.isActive) {
+      console.log("❌ Inactive user attempted password reset:", user.email);
+      return res.status(403).json({
+        success: false,
+        message: "Account has been deactivated",
+      });
+    }
+
+    // Validate token version against user's current reset version
+    if (!isTokenVersionValid(decodedToken, user)) {
+      console.log("❌ Token version mismatch for user:", user._id);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired reset token",
+      });
+    }
+
+    // Check if token has been used before
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const existingResetRecord = await PasswordReset.findOne({
+      userId: user._id,
+      token: tokenHash,
+      used: true,
+    });
+
+    if (existingResetRecord) {
+      console.log("❌ Attempted reuse of already used token");
+      return res.status(400).json({
+        success: false,
+        message: "Reset token has already been used",
+      });
+    }
+
+    // Update user password (this will automatically increment resetVersion)
     user.password = newPassword;
     await user.save();
+    console.log("✅ Password updated successfully for user:", user._id);
 
-    // Mark token as used
-    resetRecord.used = true;
-    await resetRecord.save();
+    // Mark token as used in database
+    await PasswordReset.updateOne(
+      { userId: user._id, token: tokenHash },
+      { used: true }
+    );
+
+    // Clean up any other unused reset tokens for this user
+    await PasswordReset.deleteMany({
+      userId: user._id,
+      used: false,
+    });
+
+    console.log("✅ Password reset completed successfully for user:", user.email);
 
     res.status(200).json({
       success: true,
-      message: "Password reset successful",
+      message: "Password reset successful. Please login with your new password.",
     });
   } catch (error) {
-    console.error("Reset password error:", error);
+    console.error("❌ Reset password error:", error);
     res.status(500).json({
       success: false,
       message: "Server error resetting password",
