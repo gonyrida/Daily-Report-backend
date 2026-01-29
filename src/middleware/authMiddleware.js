@@ -75,6 +75,7 @@ const authenticateToken = async (req, res, next) => {
       ...decoded,
       name: `${user.firstName} ${user.lastName}`,  // Combine first + last name
       email: user.email,      // Add user's email
+      companyId: user.companyId,  // ← ADD THIS LINE
       id: decoded.userId     // For backward compatibility
     };
     console.log(

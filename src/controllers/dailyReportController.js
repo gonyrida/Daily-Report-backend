@@ -143,12 +143,14 @@ const upsertDailyReport = async (req, res) => {
 
     // Extract userId from authenticated user
     const userId = req.user.userId;
+    const companyId = req.user.companyId; // ← ADD THIS LINE
     if (!userId) {
       console.error("DEBUG BACKEND: No userId found in req.user");
       return res.status(401).json({ message: "User authentication required" });
     }
 
     console.log("DEBUG BACKEND: Upserting report for userId:", userId);
+    console.log("DEBUG BACKEND: Upserting report for companyId:", companyId); // ← ADD THIS
 
     // Fix date normalization to handle timezone properly
     const dateStr = reportData.reportDate;
@@ -163,13 +165,15 @@ const upsertDailyReport = async (req, res) => {
 
     console.log("DEBUG BACKEND: Calling upsertDailyReport service with:", {
       userId,
+      companyId, // ← ADD THIS
       projectName: reportData.projectName,
       reportDate: reportData.reportDate,
     });
 
     const report = await dailyReportService.upsertDailyReport(
       userId,
-      reportData
+      reportData,
+      companyId // ← ADD COMPANYID PARAMETER
     );
     
     const isUpdate = report.lastUpdated > report.createdAt;
@@ -529,6 +533,7 @@ module.exports = {
   getReportById,
   getReportByDate,
   upsertDailyReport,
+  saveOrUpdateReport,
   submitReport,
   createNewReport,
   createBlankReport,

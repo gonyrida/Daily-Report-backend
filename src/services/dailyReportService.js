@@ -182,7 +182,7 @@ const getReportByDateOnly = async (reportDate) => {
  * If report exists for same project and date: update it and set lastUpdated
  * If report doesn't exist: insert as new record
  */
-const saveOrUpdateReport = async (userId, reportData, companyId) => {
+const upsertDailyReport = async (userId, reportData, companyId) => {
   console.log("DEBUG BACKEND SERVICE: saveOrUpdateReport called with:", {
     userId,
     projectName: reportData.projectName,
@@ -247,13 +247,13 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
           (p) => p.description?.trim() === item.description?.trim()
         );
         
-        const prevAccum = Number(prevItem?.accumulated) || 0;
+        const userPrev = Number(item.prev) || 0;
         const today = Number(item.today) || 0;
-        const accumulated = prevAccum + today;
+        const accumulated = userPrev + today;  // ← USER'S prev + today
         
         // Validation logging
         console.log(`DEBUG: Rolling total for "${item.description}":`, {
-          prev: prevAccum,
+          prev: userPrev,
           today: today,
           accumulated: accumulated,
           foundPrevious: !!prevItem
@@ -261,7 +261,7 @@ const saveOrUpdateReport = async (userId, reportData, companyId) => {
         
         return {
           ...item,
-          prev: prevAccum,
+          prev: Number(item.prev) || userPrev,  // ← RESPECT USER INPUT
           today: today, // Ensure it's a number
           accumulated: accumulated,
         };

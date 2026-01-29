@@ -260,16 +260,7 @@ exports.getProfile = async (req, res) => {
     // Return user data in the format expected by frontend
     res.status(200).json({
       success: true,
-      data: {
-        id: user._id,
-        email: user.email,
-        fullName: user.fullName,
-        role: user.role,
-        accountStatus: user.accountStatus,
-        profilePicture: user.profilePicture,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-      },
+      user: user.toJSON()
     });
   } catch (error) {
     console.error("Get profile error:", error);
