@@ -59,7 +59,6 @@ router.post(
 // Upload profile picture
 router.post(
   "/upload-profile",
-  authenticateToken,
   upload.single("profilePicture"),
   handleMulterError,
   uploadProfilePicture

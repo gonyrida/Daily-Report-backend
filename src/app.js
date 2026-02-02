@@ -90,7 +90,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/refresh-token", authLimiter, require("./routes/refreshTokenRoutes"));
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
 app.use("/api/projects", authenticateToken, projectRoutes);
-app.use("/api/images", imageRoutes);
+app.use("/api/images", authenticateToken, imageRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
