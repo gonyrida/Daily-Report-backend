@@ -188,7 +188,7 @@ exports.login = async (req, res) => {
       sameSite: isProduction ? "None" : "strict", // "None" for cross-site on Render
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: "/",
-      ...(isProduction && { domain: '.onrender.com' }), // Add domain only in production
+      // Don't set domain for Render subdomains - let browser handle it
     });
 
     res.status(200).json({
@@ -233,7 +233,7 @@ exports.logout = async (req, res) => {
       secure: isProduction,
       sameSite: isProduction ? "None" : "strict",
       path: "/",
-      ...(isProduction && { domain: '.onrender.com' }),
+      // Don't set domain for Render subdomains
     });
 
     res.status(200).json({

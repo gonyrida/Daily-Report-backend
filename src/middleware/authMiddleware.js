@@ -123,10 +123,7 @@ const setTokenCookie = (res, token) => {
     path: "/",
   };
 
-  // For Render production, set domain for cross-subdomain cookies
-  if (isProduction) {
-    cookieOptions.domain = '.onrender.com';
-  }
+  // Don't set domain for Render subdomains - let browser handle it
 
   console.log("AUTH MIDDLEWARE: Setting cookie with options:", cookieOptions);
   console.log("AUTH MIDDLEWARE: Token being set:", token ? "[PRESENT]" : "[MISSING]");
@@ -146,10 +143,7 @@ const clearTokenCookie = (res) => {
     path: "/",
   };
 
-  // For Render production, match the domain settings
-  if (isProduction) {
-    cookieOptions.domain = '.onrender.com';
-  }
+  // Don't set domain for Render subdomains
 
   res.cookie("token", "", cookieOptions);
 };
