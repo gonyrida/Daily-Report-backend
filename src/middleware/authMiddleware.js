@@ -117,21 +117,21 @@ const setTokenCookie = (res, token) => {
 
   const cookieOptions = {
     httpOnly: true,
-    secure: isProduction, // Use false in development for localhost
-    sameSite: isProduction ? "Strict" : "Lax", // Use Lax in development for localhost
+    secure: isProduction, // true on Render (HTTPS required)
+    sameSite: isProduction ? "None" : "Lax", // "None" for cross-site on Render
     maxAge: 60 * 60 * 1000, // 1 hour
     path: "/",
   };
 
-  // For localhost development, explicitly set domain to allow cross-subdomain cookies
-  if (!isProduction) {
-    cookieOptions.domain = undefined; // Allow localhost to work properly
+  // For Render production, set domain for cross-subdomain cookies
+  if (isProduction) {
+    cookieOptions.domain = '.onrender.com';
   }
 
   console.log("AUTH MIDDLEWARE: Setting cookie with options:", cookieOptions);
   console.log("AUTH MIDDLEWARE: Token being set:", token ? "[PRESENT]" : "[MISSING]");
   
-  res.cookie("access_token", token, cookieOptions);
+  res.cookie("token", token, cookieOptions);
 };
 
 // Middleware to clear JWT cookie
@@ -141,17 +141,17 @@ const clearTokenCookie = (res) => {
   const cookieOptions = {
     httpOnly: true,
     secure: isProduction,
-    sameSite: isProduction ? "Strict" : "Lax",
+    sameSite: isProduction ? "None" : "Lax", // Match setTokenCookie
     expires: new Date(0), // Immediately expire
     path: "/",
   };
 
-  // For localhost development, match the domain settings
-  if (!isProduction) {
-    cookieOptions.domain = undefined; // Allow localhost to work properly
+  // For Render production, match the domain settings
+  if (isProduction) {
+    cookieOptions.domain = '.onrender.com';
   }
 
-  res.cookie("access_token", "", cookieOptions);
+  res.cookie("token", "", cookieOptions);
 };
 
 // Middleware to check if user has required role
