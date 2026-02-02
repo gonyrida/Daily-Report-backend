@@ -181,11 +181,14 @@ exports.login = async (req, res) => {
     }
 
     // Set HTTP-only cookie with the token
+    const isProduction = process.env.NODE_ENV === "production";
     res.cookie("token", token, {
       httpOnly: true, // Prevents JavaScript access (XSS protection)
-      secure: process.env.NODE_ENV === "production", // HTTPS only in production
-      sameSite: "strict", // CSRF protection
+      secure: isProduction, // HTTPS only in production
+      sameSite: isProduction ? "None" : "strict", // "None" for cross-site on Render
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      path: "/",
+      ...(isProduction && { domain: '.onrender.com' }), // Add domain only in production
     });
 
     res.status(200).json({
@@ -224,10 +227,13 @@ exports.logout = async (req, res) => {
     }
 
     // Clear the authentication cookie
+    const isProduction = process.env.NODE_ENV === "production";
     res.clearCookie("token", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: isProduction,
+      sameSite: isProduction ? "None" : "strict",
+      path: "/",
+      ...(isProduction && { domain: '.onrender.com' }),
     });
 
     res.status(200).json({
