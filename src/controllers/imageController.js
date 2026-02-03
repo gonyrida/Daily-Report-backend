@@ -1,6 +1,9 @@
 const multer = require("multer");
+
 const path = require("path");
+
 const fs = require("fs");
+
 const env = require("../config/env");
 
 // Configure storage
@@ -11,19 +14,23 @@ const storage = multer.diskStorage({
     if (!userId) {
       return cb(new Error("User authentication required"), "");
     }
-    
+
     const uploadPath = path.join(__dirname, "../../uploads/images", userId.toString());
+
     // Ensure directory exists
     if (!fs.existsSync(uploadPath)) {
       fs.mkdirSync(uploadPath, { recursive: true });
     }
+
     cb(null, uploadPath);
   },
+
   filename: (req, file, cb) => {
     // Generate unique filename: timestamp-random-originalname
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     const name = path.basename(file.originalname, ext);
+
     cb(null, `${name}-${uniqueSuffix}${ext}`);
   },
 });
@@ -31,9 +38,8 @@ const storage = multer.diskStorage({
 // File filter - only allow images
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
-  const extname = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
+  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+
   const mimetype = allowedTypes.test(file.mimetype);
 
   if (mimetype && extname) {
@@ -42,7 +48,8 @@ const fileFilter = (req, file, cb) => {
     cb(
       new Error(
         "Invalid file type. Only JPEG, JPG, PNG, GIF, WEBP, and SVG images are allowed."
-      )
+      ),
+      false
     );
   }
 };
@@ -167,8 +174,10 @@ const uploadProfilePicture = async (req, res) => {
     // Delete old profile picture if it exists
     const User = require("../models/userModel");
     const user = await User.findById(userId);
+
     if (user && user.profilePicture) {
       const oldPath = path.join(__dirname, "../../uploads", user.profilePicture);
+
       if (fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
       }

@@ -19,6 +19,9 @@ const app = express();
 // Connect to MongoDB
 connectDB();
 
+// Serve static files from uploads directory with authentication
+app.use('/uploads', authenticateToken, express.static(path.join(__dirname, 'uploads')));
+
 // Apply general rate limiting to all requests
 app.use(generalLimiter);
 
