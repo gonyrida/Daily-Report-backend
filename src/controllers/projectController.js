@@ -181,13 +181,9 @@ exports.deleteProject = async (req, res) => {
   try {
     const { id } = req.params;
     
-    const project = await Project.findOneAndUpdate(
-      { _id: id, createdBy: req.user.userId, isActive: true },
-      { 
-        isActive: false,
-        updatedAt: new Date()
-      },
-      { new: true }
+    // Find and delete the project
+    const project = await Project.findOneAndDelete(
+      { _id: id, createdBy: req.user.userId, isActive: true }
     );
     
     if (!project) {
@@ -195,10 +191,17 @@ exports.deleteProject = async (req, res) => {
         error: 'Project not found' 
       });
     }
+
+    // Delete all reports associated with this project
+    const deleteResult = await DailyReport.deleteMany({ 
+      projectName: project.name 
+    });
+
+    console.log(`Deleted ${deleteResult.deletedCount} reports for project "${project.name}"`);
     
     res.status(200).json({
       success: true,
-      message: 'Project deleted successfully'
+      message: `Project and ${deleteResult.deletedCount} reports deleted successfully`
     });
     
   } catch (error) {
