@@ -131,6 +131,7 @@ const upsertDailyReport = async (req, res) => {
     console.log("DEBUG BACKEND CONTROLLER: Upsert request received");
 
     const reportData = req.body;
+    const { submitImmediately = false } = reportData; // Extract submit flag
     console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
     
     // Validate required fields
@@ -175,14 +176,30 @@ const upsertDailyReport = async (req, res) => {
       reportData,
       companyId // ← ADD COMPANYID PARAMETER
     );
+
+    let finalReport = report;
+    let submitted = false;
+
+    // Step 2: Submit immediately if requested
+    if (submitImmediately) {
+      console.log("DEBUG BACKEND: Submitting report immediately");
+      finalReport = await dailyReportService.submitDailyReport(
+        userId,
+        reportData.projectName,
+        new Date(reportData.reportDate)
+      );
+      submitted = true;
+    }
     
     const isUpdate = report.lastUpdated > report.createdAt;
     console.log("DEBUG BACKEND: Report", isUpdate ? "updated" : "created", "successfully:", report._id);
+    if (submitted) console.log("DEBUG BACKEND: Report submitted successfully");
     
     return res.status(200).json({ 
-      message: `Report ${isUpdate ? 'updated' : 'created'} successfully`, 
-      data: report,
-      action: isUpdate ? 'updated' : 'created'
+      message: `Report ${isUpdate ? 'updated' : 'created'}${submitted ? ' and submitted' : ''} successfully`, 
+      data: finalReport,
+      action: isUpdate ? 'updated' : 'created',
+      submitted: submitted
     });
   } catch (error) {
     console.error("DEBUG BACKEND: Upsert error:", error);
