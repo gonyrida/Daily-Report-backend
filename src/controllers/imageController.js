@@ -15,7 +15,11 @@ const storage = multer.diskStorage({
       return cb(new Error("User authentication required"), "");
     }
 
-    const uploadPath = path.join(__dirname, "../../uploads/images", userId.toString());
+    const uploadPath = path.join(
+      __dirname,
+      "../../uploads/images",
+      userId.toString(),
+    );
 
     // Ensure directory exists
     if (!fs.existsSync(uploadPath)) {
@@ -38,7 +42,9 @@ const storage = multer.diskStorage({
 // File filter - only allow images
 const fileFilter = (req, file, cb) => {
   const allowedTypes = /jpeg|jpg|png|gif|webp|svg/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+  const extname = allowedTypes.test(
+    path.extname(file.originalname).toLowerCase(),
+  );
 
   const mimetype = allowedTypes.test(file.mimetype);
 
@@ -47,9 +53,9 @@ const fileFilter = (req, file, cb) => {
   } else {
     cb(
       new Error(
-        "Invalid file type. Only JPEG, JPG, PNG, GIF, WEBP, and SVG images are allowed."
+        "Invalid file type. Only JPEG, JPG, PNG, GIF, WEBP, and SVG images are allowed.",
       ),
-      false
+      false,
     );
   }
 };
@@ -127,7 +133,7 @@ const uploadMultipleImages = async (req, res) => {
     // Generate user-specific public URLs
     const baseUrl = env.BASE_URL;
     const imageUrls = req.files.map(
-      (file) => `${baseUrl}/uploads/images/${userId}/${file.filename}`
+      (file) => `${baseUrl}/uploads/images/${userId}/${file.filename}`,
     );
 
     res.status(200).json({
@@ -171,28 +177,60 @@ const uploadProfilePicture = async (req, res) => {
       });
     }
 
-    // Delete old profile picture if it exists
+    // Find user
     const User = require("../models/userModel");
     const user = await User.findById(userId);
 
-    if (user && user.profilePicture) {
-      const oldPath = path.join(__dirname, "../../uploads", user.profilePicture);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
 
-      if (fs.existsSync(oldPath)) {
-        fs.unlinkSync(oldPath);
+    // If old profilePicture was a file path (legacy), attempt to remove it
+    if (
+      user.profilePicture &&
+      typeof user.profilePicture === "string" &&
+      user.profilePicture.startsWith("/images/")
+    ) {
+      try {
+        const oldPath = path.join(
+          __dirname,
+          "../../uploads",
+          user.profilePicture,
+        );
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+        }
+      } catch (e) {
+        // don't block on cleanup errors
+        console.warn("Failed to remove old profile picture file:", e.message);
       }
     }
 
-    // Store relative path in database (not full URL)
-    const relativePath = `/images/${userId}/${req.file.filename}`;
+    // Read uploaded file into memory and convert to base64 data URL
+    const filePath = req.file.path;
+    const buffer = fs.readFileSync(filePath);
+    const base64 = buffer.toString("base64");
+    const dataUrl = `data:${req.file.mimetype};base64,${base64}`;
+
+    // Store data URL in database
+    user.profilePicture = dataUrl;
+    await user.save();
+
+    // Remove temporary uploaded file
+    try {
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch (e) {
+      console.warn("Failed to delete temp upload file:", e.message);
+    }
 
     res.status(200).json({
       success: true,
       message: "Profile picture uploaded successfully",
       data: {
-        path: relativePath, // Store this in database
-        filename: req.file.filename,
-        originalName: req.file.originalname,
+        profilePicture: dataUrl,
+        mimeType: req.file.mimetype,
         size: req.file.size,
       },
     });
