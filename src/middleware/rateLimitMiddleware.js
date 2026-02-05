@@ -2,8 +2,8 @@ const rateLimit = require('express-rate-limit');
 
 // General rate limiting for all requests
 const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 200, // Limit each IP to 200 requests per windowMs
+  windowMs: 1 * 60 * 1000, // 1 minute (changed from 15 minutes)
+  max: 500, // Limit each IP to 500 requests per windowMs
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
@@ -39,8 +39,8 @@ const sensitiveLimiter = rateLimit({
 
 // Rate limiting for Excel export (resource intensive)
 const exportLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // Limit each user to 20 exports per hour
+  windowMs: 15 * 60 * 1000, // 15 minutes (changed from 1 hour)
+  max: 20, // Limit each user to 20 exports per 15 minutes
   keyGenerator: (req) => {
     // Safely access user ID with fallback to IP
     try {
