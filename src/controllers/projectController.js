@@ -29,6 +29,7 @@ exports.createProject = async (req, res) => {
     // Create new project
     const project = new Project({
       name: name.trim(),
+      companyId: req.user.companyId,  // ← ADD THIS
       createdBy: req.user.userId,
       createdByName: req.user.name || 'Unknown User'
     });
@@ -56,6 +57,7 @@ exports.createProject = async (req, res) => {
 exports.getUserProjects = async (req, res) => {
   try {
     const projects = await Project.find({ 
+      companyId: req.user.companyId,  // ← ADD THIS FILTER
       isActive: true
     })
     .sort({ updatedAt: -1 })
@@ -107,6 +109,7 @@ exports.updateProject = async (req, res) => {
     // Get current project to get old name
     const currentProject = await Project.findOne({ 
       _id: id, 
+      companyId: req.user.companyId,  // ← ADD THIS
       createdBy: req.user.userId, 
       isActive: true 
     });
@@ -135,7 +138,7 @@ exports.updateProject = async (req, res) => {
     
     // Update project name
     const project = await Project.findOneAndUpdate(
-      { _id: id, createdBy: req.user.userId, isActive: true },
+      { _id: id, companyId: req.user.companyId, createdBy: req.user.userId, isActive: true },  // ← ADD companyId
       { 
         name: newName,
         updatedAt: new Date()
@@ -183,7 +186,7 @@ exports.deleteProject = async (req, res) => {
     
     // Find and delete the project
     const project = await Project.findOneAndDelete(
-      { _id: id, createdBy: req.user.userId, isActive: true }
+      { _id: id, companyId: req.user.companyId, createdBy: req.user.userId, isActive: true }  // ← ADD companyId
     );
     
     if (!project) {

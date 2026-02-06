@@ -17,6 +17,11 @@ const projectSchema = new mongoose.Schema({
     required: [true, 'Creator name is required'],
     trim: true
   },
+  companyId: {  // ← ADD THIS FIELD
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Company',
+    required: [true, 'Project must belong to a company']
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -47,6 +52,8 @@ const projectSchema = new mongoose.Schema({
 // Index for better query performance
 projectSchema.index({ isActive: 1 });  // ← Remove createdBy from index since we're not filtering by it
 projectSchema.index({ name: 1 }); // ← Remove unique constraint
+projectSchema.index({ companyId: 1, isActive: 1 });
+projectSchema.index({ companyId: 1, name: 1 }); // For company-specific unique names
 
 const Project = mongoose.model('Project', projectSchema);
 
