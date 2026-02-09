@@ -15,6 +15,8 @@ const {
 } = require("../utils/generateResetToken");
 
 const { validatePasswordStrength } = require("../utils/passwordValidator");
+const { generateEmailVerificationToken, verifyEmailToken } = require("../utils/generateEmailVerificationToken");
+const { getEmailVerificationTemplate } = require("../utils/emailTemplates");
 const crypto = require("crypto");
 const env = require("../config/env");
 
@@ -53,6 +55,17 @@ exports.register = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: "Invalid email format",
+      });
+    }
+
+    // Validate email domain - only allow @cambodiacpm.com
+    const allowedDomain = "cambodiacpm.com";
+    const emailDomain = email.toLowerCase().split('@')[1];
+    if (emailDomain !== allowedDomain) {
+      console.log("❌ Validation failed: Unauthorized email domain:", emailDomain);
+      return res.status(403).json({
+        success: false,
+        message: `Registration is only allowed for company email addresses`,
       });
     }
 
@@ -99,9 +112,59 @@ exports.register = async (req, res) => {
 
     const user = new User(userData);
 
+    // Generate email verification token
+    const { token: verificationToken, expires: verificationExpires } = generateEmailVerificationToken();
+    user.emailVerificationToken = verificationToken;
+    user.emailVerificationExpires = verificationExpires;
+
     console.log("💾 Saving user to database...");
     await user.save();
     console.log("✅ User saved successfully");
+
+    // Send verification email
+    try {
+      console.log("📧 Preparing to send verification email...");
+      console.log("📧 Email config check:", {
+        host: process.env.EMAIL_HOST,
+        user: process.env.EMAIL_USER,
+        passExists: !!process.env.EMAIL_PASS,
+        to: email
+      });
+      
+      // Use different URLs for development vs production
+      // Force development for now - change this logic later
+      const isDevelopment = true; // process.env.NODE_ENV === 'development';
+      console.log("🔍 NODE_ENV check:", {
+        NODE_ENV: process.env.NODE_ENV,
+        isDevelopment: isDevelopment,
+        type: typeof process.env.NODE_ENV
+      });
+      const baseUrl = isDevelopment 
+        ? (process.env.FRONTEND_URL || 'http://localhost:8080')
+        : (process.env.PRODUCTION_URL || 'https://daily-report-frontend-s4tq.onrender.com');
+      
+      const verificationLink = `${baseUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+      const emailHtml = getEmailVerificationTemplate(firstName, verificationLink);
+      
+      console.log("📧 Sending email with link:", verificationLink);
+      console.log("🌐 Environment:", isDevelopment ? 'development' : 'production');
+      
+      await sendEmail({
+        to: email,
+        subject: 'Verify Your Email Address - CACPM Daily Report System',
+        html: emailHtml
+      });
+      
+      console.log("✅ Verification email sent successfully");
+    } catch (emailError) {
+      console.error("❌ Failed to send verification email:", emailError);
+      console.error("❌ Email error details:", {
+        message: emailError.message,
+        code: emailError.code,
+        stack: emailError.stack
+      });
+      // Don't fail registration if email fails, but log it
+    }
 
     console.log("🔑 Generating token...");
 
@@ -117,9 +180,10 @@ exports.register = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Account created successfully",
+      message: "Account created successfully. Please check your email to verify your account.",
       token, // Include JWT token for frontend Python API access
       user: user.toJSON(),
+      emailVerificationRequired: !user.emailVerified,
     });
   } catch (error) {
     console.error("❌❌❌ Register error:", error);
@@ -168,6 +232,15 @@ exports.login = async (req, res) => {
       return res.status(403).json({
         success: false,
         message: "Account has been deactivated",
+      });
+    }
+
+    // Check if email is verified
+    if (!user.emailVerified) {
+      return res.status(403).json({
+        success: false,
+        message: "Please verify your email address before logging in. Check your inbox for the verification email.",
+        emailVerificationRequired: true,
       });
     }
 
@@ -1243,6 +1316,135 @@ exports.deleteAccount = async (req, res) => {
       success: false,
 
       message: "Failed to delete account",
+    });
+  }
+};
+
+// @desc    Verify email address
+// @route   GET /api/auth/verify-email
+// @access  Public
+exports.verifyEmail = async (req, res) => {
+  try {
+    const { token, email } = req.query;
+
+    if (!token || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Verification token and email are required",
+      });
+    }
+
+    // Find user by email and include verification fields
+    const user = await User.findOne({ 
+      email: email.toLowerCase() 
+    }).select('+emailVerificationToken +emailVerificationExpires');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Verify the token
+    const tokenVerification = verifyEmailToken(user, token);
+    
+    if (!tokenVerification.valid) {
+      return res.status(400).json({
+        success: false,
+        message: tokenVerification.message,
+      });
+    }
+
+    // Mark email as verified and clear verification fields
+    user.emailVerified = true;
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
+
+    console.log("✅ Email verified successfully for:", email);
+
+    res.status(200).json({
+      success: true,
+      message: "Email verified successfully! Your account is now active.",
+    });
+
+  } catch (error) {
+    console.error("❌ Email verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during email verification",
+    });
+  }
+};
+
+// @desc    Resend verification email
+// @route   POST /api/auth/resend-verification
+// @access  Public
+exports.resendVerification = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required",
+      });
+    }
+
+    // Find user by email
+    const user = await User.findOne({ email: email.toLowerCase() });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.emailVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already verified",
+      });
+    }
+
+    // Generate new verification token
+    const { token: verificationToken, expires: verificationExpires } = generateEmailVerificationToken();
+    user.emailVerificationToken = verificationToken;
+    user.emailVerificationExpires = verificationExpires;
+    await user.save();
+
+    // Send verification email
+    try {
+      const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
+      const emailHtml = getEmailVerificationTemplate(user.firstName, verificationLink);
+      
+      await sendEmail({
+        to: email,
+        subject: 'Verify Your Email Address - CACPM Daily Report System',
+        html: emailHtml
+      });
+      
+      console.log("✅ Verification email resent successfully");
+    } catch (emailError) {
+      console.error("❌ Failed to resend verification email:", emailError);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to send verification email",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Verification email sent successfully. Please check your inbox.",
+    });
+
+  } catch (error) {
+    console.error("❌ Resend verification error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while resending verification email",
     });
   }
 };

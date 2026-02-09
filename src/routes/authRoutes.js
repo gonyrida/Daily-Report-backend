@@ -15,6 +15,8 @@ const {
   revokeAllSessions,
   deactivateAccount,
   deleteAccount,
+  verifyEmail,
+  resendVerification,
 } = require("../controllers/authController");
 const { authenticateToken } = require("../middleware/authMiddleware");
 const { passwordResetRateLimit, passwordResetConfirmRateLimit } = require("../middleware/rateLimiter");
@@ -27,6 +29,8 @@ router.post("/login", login); // Make sure this line exists
 router.post("/forgot-password", passwordResetRateLimit, forgotPassword);
 router.post("/reset-password", passwordResetConfirmRateLimit, resetPassword);
 router.post("/test-email", testEmail); // For testing email functionality
+router.get("/verify-email", verifyEmail); // Email verification endpoint
+router.post("/resend-verification", resendVerification); // Resend verification email
 
 // Protected routes
 router.post("/logout", authenticateToken, logout);
