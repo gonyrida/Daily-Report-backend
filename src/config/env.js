@@ -6,7 +6,7 @@ module.exports = {
     process.env.MONGODB_URI ||
     "mongodb+srv://cacpm_users:cacpm1@cacpm.edyltbr.mongodb.net/?appName=CACPM",
   PORT: process.env.PORT || 5000,
-  BASE_URL: process.env.BASE_URL || "https://daily-report-backend.onrender.com",
+  BASE_URL: process.env.BASE_URL || "https://daily-report-backend.officemuckup.com",
   JWT_SECRET:
     process.env.JWT_SECRET ||
     "8127619f1382cb5f434127e02f344c7d0a9620dc492f6c34cfe8d5f7f320d53cdefe84ef7d84f9186df9cf0f995b46c91feb66140aa5f0d2bda40ee7c05ee12e",
@@ -24,7 +24,7 @@ module.exports = {
   FRONTEND_URL:
     process.env.FRONTEND_URL ||
     "http://localhost:8080",
-  PRODUCTION_URL: process.env.PRODUCTION_URL || "https://daily-report-frontend-s4tq.onrender.com",
+  PRODUCTION_URL: process.env.PRODUCTION_URL || "https://daily-report-frontend.officemuckup.com",
 };
 
 // ✅ Use module.exports directly, no need to require db.js

@@ -141,7 +141,7 @@ exports.register = async (req, res) => {
       });
       const baseUrl = isDevelopment 
         ? (process.env.FRONTEND_URL || 'http://localhost:8080')
-        : (process.env.PRODUCTION_URL || 'https://daily-report-frontend-s4tq.onrender.com');
+        : (process.env.PRODUCTION_URL || 'https://daily-report-frontend.officemuckup.com');
       
       const verificationLink = `${baseUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
       const emailHtml = getEmailVerificationTemplate(firstName, verificationLink);
