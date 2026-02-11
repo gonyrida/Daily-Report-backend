@@ -100,15 +100,40 @@ exports.register = async (req, res) => {
       lastName,
     };
 
-    // Add companyId for development testing
-    const TEST_COMPANY_ID = "6975e43e400dcc89c6f92463"; // ← Replace with your actual ObjectId
-    if (process.env.NODE_ENV === "development") {
-      userData.companyId = TEST_COMPANY_ID;
-      console.log(
-        "🔧 DEV MODE: Assigned test company to new user:",
-        TEST_COMPANY_ID
-      );
+     // Assign companyId based on verified email domain
+    // companyId is never accepted from request body for security
+    let assignedCompanyId = null;
+    
+    // Only assign companyId for verified email domains (already validated above)
+    if (emailDomain === allowedDomain) {
+      // Production: Assign verified company ID for CACPM domain
+      assignedCompanyId = "6975e43e400dcc89c6f92463"; // Verified CACPM company ID
+      console.log("✅ Assigned verified company ID for domain:", emailDomain);
+    } else {
+      console.log("❌ Security error: Unauthorized domain passed validation:", emailDomain);
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error - domain validation failed",
+      });
     }
+    
+    // Development mode: Allow test companyId override for testing
+    if (process.env.NODE_ENV === "development" && process.env.DEV_TEST_COMPANY_ID) {
+      assignedCompanyId = process.env.DEV_TEST_COMPANY_ID;
+      console.log("🔧 DEV MODE: Overridden with test company ID:", assignedCompanyId);
+    }
+    
+    // Final validation: Ensure companyId is assigned
+    if (!assignedCompanyId) {
+      console.log("❌ Security error: No companyId assigned for domain:", emailDomain);
+      return res.status(500).json({
+        success: false,
+        message: "Server configuration error - unable to assign company",
+      });
+    }
+    
+    userData.companyId = assignedCompanyId;
+    console.log("🏢 Final assigned company ID:", assignedCompanyId);
 
     const user = new User(userData);
 
