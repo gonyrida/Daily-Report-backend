@@ -1,4 +1,5 @@
 const DailyReport = require("../models/dailyReportModel.js");
+const User = require("../models/userModel.js");
 /**
  * Merge duplicate descriptions in resource arrays to prevent conflicts
  */
@@ -187,7 +188,13 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     userId,
     projectName: reportData.projectName,
     reportDate: reportData.reportDate,
+    location: reportData.location, // 🔍 DEBUG: Check if location is received
+    allFields: Object.keys(reportData) // 🔍 DEBUG: Show all received fields
   });
+
+  // Get user's full name for createdBy field
+  const user = await User.findById(userId);
+  const userFullName = user ? `${user.firstName} ${user.lastName}` : "";
 
   const session = await DailyReport.startSession();
   session.startTransaction();
@@ -341,15 +348,18 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         { name: 'workPlanNextDay', strategy: 'replace' },
         { name: 'weatherAM', strategy: 'replace' },
         { name: 'weatherPM', strategy: 'replace' },
+        { name: 'location', strategy: 'replace' },
         { name: 'hse_title', strategy: 'replace' },
         { name: 'site_title', strategy: 'replace' },
         { name: 'description', strategy: 'replace' },
         { name: 'tableTitle', strategy: 'replace' }
       ];
-      
+      console.log("🔍 FRONTEND: Sending location:", reportData.location);
       const updateData = {
         ...reportData,
         companyId: companyId, // ← ADD THIS (ensures existing reports get companyId)
+        createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
+        location: reportData.location || "",
         managementTeam,
         workingTeamInterior,
         workingTeamMEP,
@@ -359,6 +369,12 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         reportDate: inputDate,
         lastUpdated: new Date(), // Update timestamp
       };
+      
+      console.log("🔍 DEBUG: updateData before save:", {
+        location: updateData.location,
+        hasLocation: 'location' in updateData,
+        locationType: typeof updateData.location
+      });
       
       // Apply numeric field updates
       numericFields.forEach(field => {
@@ -380,9 +396,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     } else {
       // Create new report
       console.log("DEBUG BACKEND SERVICE: Creating new report");
-      report = new DailyReport({
+      
+      const newReportData = {
         userId,
         companyId, // ← ADD THIS
+        createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
         ...reportData,
         managementTeam,
         workingTeamInterior,
@@ -393,7 +411,16 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         reportDate: inputDate,
         status: "draft",
         lastUpdated: new Date(),
+      };
+      
+      console.log("🔍 DEBUG: newReportData before save:", {
+        location: newReportData.location,
+        hasLocation: 'location' in newReportData,
+        locationType: typeof newReportData.location,
+        allKeys: Object.keys(newReportData)
       });
+      
+      report = new DailyReport(newReportData);
       await report.save({ session });
       console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
       
@@ -504,11 +531,19 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
       reportDate,
     });
 
+    // Get user's full name for createdBy field
+    const user = await User.findById(userId);
+    const userFullName = user ? `${user.firstName} ${user.lastName}` : "";
+
+  
+
+
     // No longer checking for existing reports - allow multiple reports per date/project
     // Create new report with default values
     const report = new DailyReport({
       userId,
       companyId,
+      createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
       projectName: projectName || "Default Project",
       reportDate,
       status: "draft",
@@ -650,8 +685,13 @@ const createBlankReport = async (userId, projectName = null) => {
   try {
     console.log("DEBUG BACKEND SERVICE: Creating blank report for:", { userId, projectName });
 
+    // Get user's full name for createdBy field
+    const user = await User.findById(userId);
+    const userFullName = user ? `${user.firstName} ${user.lastName}` : "";
+
     const report = new DailyReport({
       userId,
+      createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
       projectName: projectName || "Untitled Report",
       reportDate: new Date(),
       status: "draft",

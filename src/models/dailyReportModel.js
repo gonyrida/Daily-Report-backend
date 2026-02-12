@@ -54,6 +54,16 @@ const dailyReportSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    location: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    createdBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
     currentPeriod: {
       type: String,
       enum: ["AM", "PM"],
@@ -176,7 +186,8 @@ const dailyReportSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
-  }
+  },
+  
 );
 
 // Add indexes for faster queries and auto-save functionality
