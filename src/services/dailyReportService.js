@@ -344,7 +344,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       const numericFields = ['tempAM', 'tempPM'];
       
       const textFields = [
-        { name: 'activityToday', strategy: 'append' },
+        { name: 'activityToday', strategy: 'replace' }, //Change strategy: from 'append' to 'replace'
         { name: 'workPlanNextDay', strategy: 'replace' },
         { name: 'weatherAM', strategy: 'replace' },
         { name: 'weatherPM', strategy: 'replace' },
