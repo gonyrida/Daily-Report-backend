@@ -4,10 +4,11 @@
   "description": "Backend for Daily Report Application",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node --max-old-space-size=8192 src/server.js",
+    "dev": "nodemon --max-old-space-size=8192 src/server.js",
     "test": "jest",
     "build": "npm install && echo 'Build complete'"
+
   },
   "keywords": [
     "backend",

@@ -99,8 +99,138 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 
 // Health check route
-app.get("/", (req, res) => {
-  res.json({ message: "API is running" });
+app.get("/health", async (req, res) => {
+  const startTime = Date.now();
+  
+  try {
+    // Check database connection and latency
+    const mongoose = require('mongoose');
+    let dbStatus = 'disconnected';
+    let dbLatency = null;
+    let dbHost = null;
+    
+    const dbStates = {
+      0: 'disconnected',
+      1: 'connected',
+      2: 'connecting',
+      3: 'disconnecting'
+    };
+    
+    dbStatus = dbStates[mongoose.connection.readyState] || 'unknown';
+    
+    // Test database latency if connected
+    if (mongoose.connection.readyState === 1) {
+      try {
+        const dbStart = Date.now();
+        await mongoose.connection.db.admin().ping();
+        dbLatency = `${Date.now() - dbStart}ms`;
+        dbHost = mongoose.connection.host;
+      } catch (pingError) {
+        dbLatency = 'failed';
+        dbStatus = 'degraded';
+      }
+    }
+    
+    // Check memory usage and calculate percentages
+    const memUsage = process.memoryUsage();
+    const memUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    const memTotalMB = Math.round(memUsage.heapTotal / 1024 / 1024);
+    const memLimitMB = Math.round((memUsage.heapLimit || 1024 * 1024 * 1024) / 1024 / 1024); // Fallback to 1GB
+    const memUsagePercent = memTotalMB > 0 ? Math.round((memUsage.heapUsed / memUsage.heapTotal) * 100) : 0;
+    const memUsageOfLimitPercent = memLimitMB > 0 ? Math.round((memUsage.heapUsed / (memLimitMB * 1024 * 1024)) * 100) : 0;
+    
+    // Get system memory info
+    const os = require('os');
+    const systemMem = os.totalmem();
+    const freeMem = os.freemem();
+    const systemTotalGB = Math.round(systemMem / 1024 / 1024 / 1024);
+    const systemFreeGB = Math.round(freeMem / 1024 / 1024 / 1024);
+    const systemUsedGB = systemTotalGB - systemFreeGB;
+    
+    // Calculate uptime
+    const uptime = process.uptime();
+    const uptimeFormatted = `${Math.floor(uptime / 3600)}h ${Math.floor((uptime % 3600) / 60)}m ${Math.floor(uptime % 60)}s`;
+    
+    const responseTime = Date.now() - startTime;
+    
+    // Determine overall health status
+    let overallStatus = 'healthy';
+    let httpStatus = 200;
+    
+    // Health thresholds
+    if (dbStatus === 'disconnected' || dbStatus === 'error') {
+      overallStatus = 'unhealthy';
+      httpStatus = 503;
+    } else if (dbStatus === 'connecting' || dbStatus === 'disconnecting' || dbLatency === 'failed') {
+      overallStatus = 'degraded';
+      httpStatus = 503;
+    } else if (memUsagePercent > 90) {
+      overallStatus = 'degraded';
+      httpStatus = 503;
+    } else if (responseTime > 1000) {
+      overallStatus = 'degraded';
+      httpStatus = 503;
+    }
+    
+    const healthResponse = {
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      responseTime: `${responseTime}ms`,
+      uptime: uptimeFormatted,
+      services: {
+        database: {
+          status: dbStatus,
+          host: dbHost,
+          latency: dbLatency,
+          type: 'MongoDB'
+        },
+        api: {
+          status: 'running',
+          version: process.env.npm_package_version || '1.0.0',
+          environment: env.NODE_ENV || 'development'
+        }
+      },
+      system: {
+        nodeVersion: process.version,
+        platform: process.platform,
+        cpuCores: os.cpus().length,
+        memory: {
+          heap: {
+            used: `${memUsedMB}MB`,
+            total: `${memTotalMB}MB`,
+            limit: `${memLimitMB}MB`,
+            usagePercent: `${memUsagePercent}%`,
+            usageOfLimit: `${memUsageOfLimitPercent}%`
+          },
+          external: `${Math.round(memUsage.external / 1024 / 1024)}MB`,
+          system: {
+            total: `${systemTotalGB}GB`,
+            free: `${systemFreeGB}GB`,
+            used: `${systemUsedGB}GB`
+          }
+        }
+      },
+      thresholds: {
+        maxResponseTime: '1000ms',
+        maxMemoryUsage: '90%',
+        criticalServices: ['database']
+      }
+    };
+    
+    res.status(httpStatus).json(healthResponse);
+    
+  } catch (error) {
+    console.error('Health check error:', error);
+    res.status(503).json({
+      status: 'unhealthy',
+      timestamp: new Date().toISOString(),
+      error: error.message,
+      services: {
+        database: { status: 'error' },
+        api: { status: 'error' }
+      }
+    });
+  }
 });
 
 // 404 handler
