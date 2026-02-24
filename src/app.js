@@ -11,6 +11,7 @@ const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const adminRoutes = require("./features/admin_dashboard/routes/adminRoutes");
+const purchaseRequestRoutes = require("./features/purchase_request/routes/purchaseRequestRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
 const env = require("./config/env"); // Add this line
@@ -99,6 +100,7 @@ app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 app.use("/api/admin", authenticateToken, adminRoutes);
+app.use("/api/purchase-requests", authenticateToken, purchaseRequestRoutes); //Add Purchase Request Routes
 
 // Health check route
 app.get("/health", async (req, res) => {
