@@ -4,6 +4,7 @@ const cookieParser = require("cookie-parser");
 const path = require("path");
 const connectDB = require("./config/db");
 const dailyReportRoutes = require("./routes/dailyReportRoutes");
+const weeklyReportRoutes = require("./routes/weeklyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const projectRoutes = require("./routes/projectRoutes");
@@ -92,6 +93,7 @@ app.use(
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/refresh-token", authLimiter, require("./routes/refreshTokenRoutes"));
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
+app.use("/api/weekly-reports", authenticateToken, weeklyReportRoutes);
 app.use("/api/projects", authenticateToken, projectRoutes);
 app.use("/api/images", authenticateToken, imageRoutes);
 app.use("/api/support", supportRoutes);
