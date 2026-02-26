@@ -16,27 +16,39 @@ exports.createPurchaseRequest = async (req, res) => {
       deliveryPlace,
       categories,
       items,
-      preparedBy,
-      checkedBy,
-      verifiedBy,
-      approvedBy,
-      priority
+      priority,
+      status, // NEW: Extract status
+      approvers // NEW: Extract approvers
     } = req.body;
 
     // Validation
-    if (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !deliveryPlace) {
+    if (status !== 'draft' && (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !deliveryPlace)) {
       return res.status(400).json({
         success: false,
-        message: "All required fields must be provided"
+        message: "All required fields must be provided for posted requests"
       });
     }
 
-    if (!items || items.length === 0) {
+    if (status !== 'draft' && (!items || items.length === 0)) {
       return res.status(400).json({
         success: false,
         message: "At least one item must be added to the purchase request"
       });
     }
+
+    // if (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !deliveryPlace) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "All required fields must be provided"
+    //   });
+    // }
+
+    // if (!items || items.length === 0) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "At least one item must be added to the purchase request"
+    //   });
+    // }
 
     // Validate each item
     for (const item of items) {
@@ -79,10 +91,37 @@ exports.createPurchaseRequest = async (req, res) => {
         services: false
       },
       items,
-      preparedBy: preparedBy || null,
-      checkedBy: checkedBy || null,
-      verifiedBy: verifiedBy || null,
-      approvedBy: approvedBy || null,
+      status: status || 'pending', // default to 'Pending' if not provided
+      approvalWorkflow: [
+        {
+          approver: user._id,  // Current user as preparer
+          role: 'prepared',
+          status: 'completed',
+          timestamp: new Date(),
+          notes: 'Request prepared by user'
+        },
+        {
+          approver: approvers?.checkedBy || null,
+          role: 'checked',
+          status: 'pending',
+          timestamp: null,
+          notes: null
+        },
+        {
+          approver: approvers?.verifiedBy || null,
+          role: 'verified', 
+          status: 'pending',
+          timestamp: null,
+          notes: null
+        },
+        {
+          approver: approvers?.approvedBy || null,
+          role: 'approved',
+          status: 'pending', 
+          timestamp: null,
+          notes: null
+        }
+      ],
       priority: priority || 'medium',
       companyId: user.companyId,
       createdBy: user._id
@@ -129,13 +168,14 @@ exports.getPurchaseRequests = async (req, res) => {
     // Build query
     let query = {
       companyId: user.companyId,
-      isDeleted: false
+      isDeleted: false,
+      status: { $ne: 'draft' }  // exclude drafts
     };
 
-    // Filter by status if provided
-    if (status) {
-      query.status = status;
-    }
+    // Comment out the Filter by status if provided for future usage
+    // if (status) {
+      // query.status = status;
+    // }
 
     // Search functionality
     if (search) {
@@ -148,7 +188,7 @@ exports.getPurchaseRequests = async (req, res) => {
 
     // Get purchase requests
     const purchaseRequests = await PurchaseRequest.find(query)
-      .populate('createdBy', 'firstName lastName email')
+      .populate('createdBy', 'firstName lastName email approvalWorkflow')
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -193,7 +233,7 @@ exports.getPurchaseRequestById = async (req, res) => {
       _id: req.params.id,
       companyId: user.companyId,
       isDeleted: false
-    }).populate('createdBy', 'firstName lastName email');
+    }).populate('createdBy', 'firstName lastName email approvalWorkflow');
 
     if (!purchaseRequest) {
       return res.status(404).json({
@@ -221,7 +261,7 @@ exports.getPurchaseRequestById = async (req, res) => {
 // @access  Private (approvers only)
 exports.updatePurchaseRequestStatus = async (req, res) => {
   try {
-    const { status, approvedBy, checkedBy, verifiedBy, preparedBy } = req.body;
+    const { status, approverId, notes, role } = req.body;
 
     if (!['pending', 'checked', 'verified', 'approved', 'rejected'].includes(status)) {
       return res.status(400).json({
@@ -251,12 +291,20 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
       });
     }
 
-    // Update status and approvers
+    // Find and update the specific workflow step
+    const workflowStep = purchaseRequest.approvalWorkflow.find(
+      step => step.role === role
+    );
+
+    if (workflowStep) {
+      workflowStep.approver = approverId;
+      workflowStep.status = 'completed';
+      workflowStep.timestamp = new Date();
+      workflowStep.notes = notes;
+    }
+
+    // Update overall status
     purchaseRequest.status = status;
-    if (preparedBy) purchaseRequest.preparedBy = preparedBy;
-    if (checkedBy) purchaseRequest.checkedBy = checkedBy;
-    if (verifiedBy) purchaseRequest.verifiedBy = verifiedBy;
-    if (approvedBy) purchaseRequest.approvedBy = approvedBy;
 
     await purchaseRequest.save();
 
@@ -317,6 +365,164 @@ exports.deletePurchaseRequest = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error deleting purchase request"
+    });
+  }
+};
+
+// @desc    Get all users in company
+// @route   GET /api/purchase-requests/users
+// @access  Public (Authenticated Only)
+exports.getAllUsers = async (req, res) => {
+  try {
+    const { companyId } = req.user;
+    
+    // Get ALL active users in company
+    const users = await User.find({ 
+      companyId,
+      isActive: true 
+    }).select('firstName lastName email role department _id');
+    
+    res.json({
+      success: true,
+      data: users
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users'
+    });
+  }
+};
+
+// @desc    Get current user's purchase requests only
+// @route   GET /api/purchase-requests/my-requests
+// @access  Private
+exports.getMyPurchaseRequests = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const { page = 1, limit = 10, status, search } = req.query;
+    const skip = (page - 1) * limit;
+
+    // Query for user's requests only
+    let query = {
+      companyId: user.companyId,
+      createdBy: user._id,  // KEY: Only user's requests
+      isDeleted: false
+    };
+
+    // Filter by status if provided
+    if (status) {
+      query.status = status;
+    }
+
+    // Search functionality
+    if (search) {
+      query.$or = [
+        { projectName: { $regex: search, $options: 'i' } },
+        { purpose: { $regex: search, $options: 'i' } },
+        { requesterName: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    const purchaseRequests = await PurchaseRequest.find(query)
+      .populate('createdBy', 'firstName lastName email approvalWorkflow')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await PurchaseRequest.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      data: purchaseRequests,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("Get my purchase requests error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error retrieving purchase requests"
+    });
+  }
+};
+
+// @desc    Update current user's purchase requests only
+// @route   PUT /api/purchase-requests/:id
+// @access  Private
+exports.updatePurchaseRequest = async (req, res) => {
+  try {
+    const { 
+      requesterName,
+      requesterDepartment,
+      projectName,
+      purpose,
+      requestDate,
+      deliveryPlace,
+      categories,
+      items,
+      approvers,
+      priority
+    } = req.body;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const purchaseRequest = await PurchaseRequest.findOne({
+      _id: req.params.id,
+      companyId: user.companyId,
+      isDeleted: false
+    });
+
+    if (!purchaseRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase request not found"
+      });
+    }
+
+    // Update fields
+    purchaseRequest.requesterName = requesterName;
+    purchaseRequest.requesterDepartment = requesterDepartment;
+    purchaseRequest.projectName = projectName;
+    purchaseRequest.purpose = purpose;
+    purchaseRequest.requestDate = requestDate;
+    purchaseRequest.deliveryPlace = deliveryPlace;
+    purchaseRequest.categories = categories;
+    purchaseRequest.items = items;
+    purchaseRequest.approvers = approvers;
+    purchaseRequest.priority = priority;
+
+    await purchaseRequest.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Purchase request updated successfully",
+      data: purchaseRequest
+    });
+
+  } catch (error) {
+    console.error("Update purchase request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error updating purchase request"
     });
   }
 };

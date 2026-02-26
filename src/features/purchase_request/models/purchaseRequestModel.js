@@ -102,32 +102,37 @@ const purchaseRequestSchema = new mongoose.Schema(
       default: 0,
     },
     
-    // Approval Workflow
-    preparedBy: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    checkedBy: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    verifiedBy: {
-      type: String,
-      trim: true,
-      default: null,
-    },
-    approvedBy: {
-      type: String,
-      trim: true,
-      default: null,
-    },
+    // NEW: Approval Workflow Array
+    approvalWorkflow: [{
+      approver: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true
+      },
+      role: {
+        type: String,
+        enum: ["prepared", "checked", "verified", "approved"],
+        required: true
+      },
+      status: {
+        type: String,
+        enum: ["pending", "completed", "skipped"],
+        default: "pending"
+      },
+      timestamp: {
+        type: Date,
+        default: null
+      },
+      notes: {
+        type: String,
+        default: null
+      }
+    }],
     
     // Status and Metadata
     status: {
       type: String,
-      enum: ["pending", "checked", "verified", "approved", "rejected"],
+      enum: ["pending", "checked", "verified", "approved", "rejected","draft"],
       default: "pending",
     },
     priority: {
@@ -237,16 +242,21 @@ purchaseRequestSchema.virtual("amountInWords").get(function () {
 
 // Pre-save middleware to calculate grand total
 purchaseRequestSchema.pre("save", async function () {
-  // 'this' refers to the document being saved
-  if (this.isModified("items")) {
-    this.grandTotal = this.items.reduce((sum, item) => {
-      const itemTotal = (item.quantity || 0) * (item.unitPrice || 0);
-      return sum + itemTotal;
+  if (this.isModified("items") || this.isModified("tax") || this.isModified("shipping")) {
+    const subtotal = this.items.reduce((sum, item) => {
+      const q = item.quantity || 0;
+      const p = item.unitPrice || 0;
+      return sum + (q * p);
     }, 0);
+
+    // Apply modifiers and handle floating point precision
+    const total = subtotal + (this.shipping || 0) + (this.tax || 0);
     
-    console.log("Calculated grandTotal:", this.grandTotal);
+    // Rounding to 2 decimal places:
+    this.grandTotal = Math.round(total * 100) / 100;
+
+    console.log(`Updated grandTotal: ${this.grandTotal}`);
   }
-  // No next() needed for async functions
 });
 
 // Indexes for performance
