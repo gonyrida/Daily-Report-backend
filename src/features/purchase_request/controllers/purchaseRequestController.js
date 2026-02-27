@@ -491,6 +491,14 @@ exports.updatePurchaseRequest = async (req, res) => {
       isDeleted: false
     });
 
+    // Ownership guard: Only owner can update
+    if (!purchaseRequest || String(purchaseRequest.requesterId) !== String(user._id)) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to update this purchase request"
+      });
+    }
+
     if (!purchaseRequest) {
       return res.status(404).json({
         success: false,
