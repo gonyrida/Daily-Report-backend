@@ -9,7 +9,8 @@ const {
   deletePurchaseRequest,
   getAllUsers,
   getMyPurchaseRequests,
-  updatePurchaseRequest
+  updatePurchaseRequest,
+  getPendingApprovals
 } = require("../controllers/purchaseRequestController");
 
 const router = express.Router();
@@ -17,6 +18,7 @@ const router = express.Router();
 // All purchase request routes require authentication
 router.post("/", authenticateToken, createPurchaseRequest);
 router.get("/", authenticateToken, getPurchaseRequests);
+router.get("/pending-approvals", authenticateToken, getPendingApprovals);
 router.get("/my-requests", authenticateToken, getMyPurchaseRequests);
 router.get('/users', authenticateToken, getAllUsers);
 router.get("/:id", authenticateToken, getPurchaseRequestById);

@@ -492,7 +492,7 @@ exports.updatePurchaseRequest = async (req, res) => {
     });
 
     // Ownership guard: Only owner can update
-    if (!purchaseRequest || String(purchaseRequest.requesterId) !== String(user._id)) {
+    if (!purchaseRequest || String(purchaseRequest.createdBy) !== String(user._id)) {
       return res.status(403).json({
         success: false,
         message: "You are not authorized to update this purchase request"
@@ -515,7 +515,16 @@ exports.updatePurchaseRequest = async (req, res) => {
     purchaseRequest.deliveryPlace = deliveryPlace;
     purchaseRequest.categories = categories;
     purchaseRequest.items = items;
-    purchaseRequest.approvers = approvers;
+    if (approvers) {
+      // Update the approvalWorkflow with new approver IDs
+      const checkedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'checked');
+      const verifiedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'verified');
+      const approvedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'approved');
+      
+      if (checkedStep) checkedStep.approver = approvers.checkedBy || null;
+      if (verifiedStep) verifiedStep.approver = approvers.verifiedBy || null;
+      if (approvedStep) approvedStep.approver = approvers.approvedBy || null;
+    }
     purchaseRequest.priority = priority;
 
     await purchaseRequest.save();
@@ -531,6 +540,49 @@ exports.updatePurchaseRequest = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error updating purchase request"
+    });
+  }
+};
+
+// @desc    Get purchase requests needing approval for a specific approver/admin
+// @route   GET /api/purchase-requests/pending-approvals
+// @access  Private
+exports.getPendingApprovals = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Find requests where approvalWorkflow contains this user as approver/admin and status is pending
+    const query = {
+      companyId: user.companyId,
+      isDeleted: false,
+      status: { $nin: ['draft', 'rejected'] },
+      approvalWorkflow: {
+        $elemMatch: {
+          approver: user._id,
+          status: 'pending'
+        }
+      }
+    };
+
+    const requests = await PurchaseRequest.find(query)
+      .populate('createdBy', 'firstName lastName email')
+      .populate('approvalWorkflow.approver', 'firstName lastName email role');
+
+    res.status(200).json({
+      success: true,
+      data: requests
+    });
+  } catch (error) {
+    console.error("Get pending approvals error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error retrieving pending approvals"
     });
   }
 };
