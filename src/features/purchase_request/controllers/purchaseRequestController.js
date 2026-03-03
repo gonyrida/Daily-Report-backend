@@ -1,6 +1,9 @@
 // src/features/purchase_request/controllers/purchaseRequestController.js
 const PurchaseRequest = require("../models/purchaseRequestModel");
 const User = require("../../../models/userModel");
+const { 
+  validateApproverWorkflow
+} = require("../helpers/validationApproverWorkflow");
 
 // @desc    Create new purchase request
 // @route   POST /api/purchase-requests
@@ -36,20 +39,6 @@ exports.createPurchaseRequest = async (req, res) => {
       });
     }
 
-    // if (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !deliveryPlace) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "All required fields must be provided"
-    //   });
-    // }
-
-    // if (!items || items.length === 0) {
-    //   return res.status(400).json({
-    //     success: false,
-    //     message: "At least one item must be added to the purchase request"
-    //   });
-    // }
-
     // Validate each item
     for (const item of items) {
       if (!item.description || !item.unit || !item.quantity || !item.unitPrice) {
@@ -73,6 +62,15 @@ exports.createPurchaseRequest = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "User not found"
+      });
+    }
+
+    // Validate approver workflow assignments
+    const workflowValidation = validateApproverWorkflow(approvers, req.user.userId);
+    if (!workflowValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: workflowValidation.message
       });
     }
 
@@ -474,7 +472,8 @@ exports.updatePurchaseRequest = async (req, res) => {
       categories,
       items,
       approvers,
-      priority
+      priority,
+      status
     } = req.body;
 
     const user = await User.findById(req.user.userId);
@@ -506,6 +505,17 @@ exports.updatePurchaseRequest = async (req, res) => {
       });
     }
 
+    // Validate approver workflow when updating
+    if (approvers) {
+      const workflowValidation = validateApproverWorkflow(approvers, purchaseRequest.createdBy);
+      if (!workflowValidation.valid) {
+        return res.status(400).json({
+          success: false,
+          message: workflowValidation.message
+        });
+      }
+    }
+
     // Update fields
     purchaseRequest.requesterName = requesterName;
     purchaseRequest.requesterDepartment = requesterDepartment;
@@ -526,6 +536,7 @@ exports.updatePurchaseRequest = async (req, res) => {
       if (approvedStep) approvedStep.approver = approvers.approvedBy || null;
     }
     purchaseRequest.priority = priority;
+    purchaseRequest.status = status;
 
     await purchaseRequest.save();
 
