@@ -189,7 +189,12 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     projectName: reportData.projectName,
     reportDate: reportData.reportDate,
     location: reportData.location, // 🔍 DEBUG: Check if location is received
-    allFields: Object.keys(reportData) // 🔍 DEBUG: Show all received fields
+    allFields: Object.keys(reportData), // 🔍 DEBUG: Show all received fields
+    // 🔍 NEW: Specific activities debugging
+    hasActivities: 'activities' in reportData,
+    activitiesData: reportData.activities,
+    weeklyActivitiesCount: reportData.activities?.weeklyActivities?.length || 0,
+    nextWeekPlanCount: reportData.activities?.nextWeekPlan?.length || 0
   });
 
   // Get user's full name for createdBy field
@@ -327,6 +332,20 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       previousReport?.materials || []
     );
 
+    // NEW: Handle activities data (no rolling totals needed for activities)
+    const activities = reportData.activities || {
+      weeklyActivities: [],
+      nextWeekPlan: []
+    };
+    
+    console.log("DEBUG: Processing activities data:", {
+      weeklyActivitiesCount: activities.weeklyActivities?.length || 0,
+      nextWeekPlanCount: activities.nextWeekPlan?.length || 0,
+      weeklyActivities: activities.weeklyActivities,
+      nextWeekPlan: activities.nextWeekPlan,
+      source: "upsertDailyReport function"
+    });
+
     console.log("DEBUG: Calculating rolling totals for machinery...");
     const machinery = calculateRollingTotals(
       reportData.machinery || [],
@@ -339,6 +358,29 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         "DEBUG BACKEND SERVICE: Updating existing report:",
         report._id
       );
+      
+      // Update text fields with strategy
+      report.location = updateTextField(report.location, reportData.location, 'replace');
+      report.description = updateTextField(report.description, reportData.description, 'replace');
+      report.workPlanNextDay = updateTextField(report.workPlanNextDay, reportData.workPlanNextDay, 'replace');
+      report.workPlanNextWeek = updateTextField(report.workPlanNextWeek, reportData.workPlanNextWeek, 'replace');
+      report.challenges = updateTextField(report.challenges, reportData.challenges, 'replace');
+      report.lessonsLearned = updateTextField(report.lessonsLearned, reportData.lessonsLearned, 'replace');
+      report.nextDayPlan = updateTextField(report.nextDayPlan, reportData.nextDayPlan, 'replace');
+      
+      // NEW: Update activities field
+      console.log("DEBUG: Before update - report.activities:", report.activities);
+      console.log("DEBUG: Setting activities to:", activities);
+      report.activities = activities;
+      console.log("DEBUG: After update - report.activities:", report.activities);
+      
+      // Update resource arrays with rolling totals
+      report.managementTeam = managementTeam;
+      report.workingTeamInterior = workingTeamInterior;
+      report.workingTeamMEP = workingTeamMEP;
+      report.workingTeam = workingTeam; // Keep backward compatibility
+      report.materials = materials;
+      report.machinery = machinery;
       
       // Define field update strategies
       const numericFields = ['tempAM', 'tempPM'];
@@ -391,7 +433,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       });
       
       report.set(updateData);
+      console.log("DEBUG: About to save report with activities:", report.activities);
       await report.save({ session });
+      console.log("DEBUG: Report saved successfully with activities:", report.activities);
       console.log("DEBUG BACKEND SERVICE: Report updated successfully");
     } else {
       // Create new report
@@ -408,6 +452,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         workingTeam, // Keep backward compatibility
         materials,
         machinery,
+        activities, // NEW: Add activities field
         reportDate: inputDate,
         status: "draft",
         lastUpdated: new Date(),
@@ -421,7 +466,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       });
       
       report = new DailyReport(newReportData);
+      console.log("DEBUG: About to create new report with activities:", report.activities);
       await report.save({ session });
+      console.log("DEBUG: New report created successfully with activities:", report.activities);
       console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
       
       // 🚀 NEW: Update project statistics for new reports
@@ -556,6 +603,11 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
       // Activity fields (with empty defaults to satisfy validation)
       activityToday: "",
       workPlanNextDay: "",
+      // NEW: Add activities field with default structure
+      activities: {
+        weeklyActivities: [],
+        nextWeekPlan: []
+      },
       // Resource arrays (empty by default)
       managementTeam: [],
       workingTeamInterior: [],

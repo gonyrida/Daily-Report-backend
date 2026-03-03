@@ -210,6 +210,37 @@ router.patch('/:id/overall-progress', async (req, res) => {
 // POST /api/weekly-reports/:id/duplicate - Duplicate weekly report
 // router.post('/:id/duplicate', duplicateWeeklyReport);
 
+// PATCH /api/weekly-reports/:id/qaqc-status - Update QAQC section
+router.patch('/:id/qaqc-status', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+    const updateData = req.body;
+
+    const result = await weeklyReportService.updateSection(id, userId, 'qaqcStatus', updateData);
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        message: 'QAQC section updated successfully'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('Controller error in updateQaqcStatus:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 // POST /api/weekly-reports/:id/validate - Validate weekly report
 router.post('/:id/validate', validateWeeklyReport);
 

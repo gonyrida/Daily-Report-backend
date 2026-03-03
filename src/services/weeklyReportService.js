@@ -1,4 +1,51 @@
 const WeeklyReport = require('../models/WeeklyReport');
+const DailyReport = require('../models/dailyReportModel'); // NEW: Import Daily Report model
+
+/**
+ * Transform frontend activity data to backend format
+ * Since schemas now match, this is mostly validation and defaults
+ */
+const transformActivitiesToBackend = (activities) => {
+  return activities.map(activity => ({
+    description: activity.description || "",
+    percent: activity.percent || 0,
+    percentage: activity.percentage || (activity.percent ? activity.percent.toString() : "0"), // Legacy field
+    source: activity.source || "manual",
+    bulkImportId: activity.bulkImportId,
+    addedAt: activity.addedAt || new Date()
+  }));
+};
+
+/**
+ * Transform backend activity data to frontend format
+ * Since schemas now match, this is mostly validation
+ */
+const transformActivitiesToFrontend = (activities) => {
+  return activities.map(activity => ({
+    description: activity.description || "",
+    percent: activity.percent || 0,
+    percentage: activity.percentage, // Keep legacy field if present
+    source: activity.source || "manual",
+    bulkImportId: activity.bulkImportId,
+    addedAt: activity.addedAt
+  }));
+};
+
+/**
+ * Handle legacy activity data migration
+ */
+const migrateLegacyActivities = (legacyActivities) => {
+  return legacyActivities.map(activity => ({
+    description: activity.description || "",
+    percent: activity.percentage ? parseFloat(activity.percentage) : 0,
+    source: "manual", // Legacy data is always manual
+    bulkImportId: undefined,
+    addedAt: activity.addAt || new Date(),
+    // Keep legacy structure for compatibility
+    percentage: activity.percentage || "0",
+    subActivities: activity.subActivities || []
+  }));
+};
 
 /**
  * Get paginated weekly reports for a user
@@ -528,6 +575,10 @@ const getTemplate = async (projectName) => {
           weeklyActivities: [
             {
               description: '',
+              percent: 0,
+              source: 'manual',
+              addedAt: new Date(),
+              // Legacy compatibility
               percentage: '',
               subActivities: [
                 {
@@ -552,6 +603,10 @@ const getTemplate = async (projectName) => {
           nextWeekPlan: [
             {
               description: '',
+              percent: 0,
+              source: 'manual',
+              addedAt: new Date(),
+              // Legacy compatibility
               percentage: '',
               subActivities: [
                 {
@@ -990,6 +1045,123 @@ const updateSection = async (reportId, userId, sectionName, updateData) => {
   }
 };
 
+/**
+ * Handle bulk import of activities
+ */
+const bulkImportActivities = async (reportId, activitiesData) => {
+  try {
+    const report = await DailyReport.findById(reportId); // CHANGED: Use DailyReport model
+    if (!report) {
+      throw new Error('Report not found');
+    }
+
+    const { weeklyActivities, nextWeekPlan } = activitiesData;
+    
+    // Transform incoming activities to backend format
+    const transformedWeekly = transformActivitiesToBackend(weeklyActivities || []);
+    const transformedNext = transformActivitiesToBackend(nextWeekPlan || []);
+
+    // Merge with existing activities
+    const existingWeekly = report.activities?.weeklyActivities || [];
+    const existingNext = report.activities?.nextWeekPlan || [];
+
+    // Combine activities (avoid duplicates by description)
+    const mergedWeekly = [...existingWeekly, ...transformedWeekly];
+    const mergedNext = [...existingNext, ...transformedNext];
+
+    // Update report
+    if (!report.activities) {
+      report.activities = {};
+    }
+    
+    report.activities.weeklyActivities = mergedWeekly;
+    report.activities.nextWeekPlan = mergedNext;
+    report.updatedAt = new Date();
+
+    await report.save();
+
+    return {
+      success: true,
+      weeklyActivities: transformActivitiesToFrontend(mergedWeekly),
+      nextWeekPlan: transformActivitiesToFrontend(mergedNext)
+    };
+
+  } catch (error) {
+    console.error('Bulk import error:', error);
+    throw new Error(`Bulk import failed: ${error.message}`);
+  }
+};
+
+/**
+ * Get activities by bulk import ID
+ */
+const getActivitiesByBulkImportId = async (userId, bulkImportId) => {
+  try {
+    const reports = await DailyReport.find({
+      userId,
+      'activities.weeklyActivities.bulkImportId': bulkImportId
+    });
+
+    const activities = [];
+    reports.forEach(report => {
+      const weeklyActivities = report.activities?.weeklyActivities?.filter(
+        activity => activity.bulkImportId === bulkImportId
+      ) || [];
+      const nextWeekPlan = report.activities?.nextWeekPlan?.filter(
+        activity => activity.bulkImportId === bulkImportId
+      ) || [];
+      
+      activities.push(...transformActivitiesToFrontend(weeklyActivities));
+      activities.push(...transformActivitiesToFrontend(nextWeekPlan));
+    });
+
+    return activities;
+  } catch (error) {
+    console.error('Get activities by bulk import ID error:', error);
+    throw new Error(`Failed to get activities: ${error.message}`);
+  }
+};
+
+/**
+ * Get bulk import statistics
+ */
+const getBulkImportStats = async (userId) => {
+  try {
+    const reports = await DailyReport.find({ userId });
+    
+    let totalBulkImports = 0;
+    let totalManualEntries = 0;
+    const bulkImportBatches = new Set();
+
+    reports.forEach(report => {
+      const allWeeklyActivities = report.activities?.weeklyActivities || [];
+      const allNextWeekPlan = report.activities?.nextWeekPlan || [];
+      const allActivities = [...allWeeklyActivities, ...allNextWeekPlan];
+
+      allActivities.forEach(activity => {
+        if (activity.source === 'bulk') {
+          totalBulkImports++;
+          if (activity.bulkImportId) {
+            bulkImportBatches.add(activity.bulkImportId);
+          }
+        } else {
+          totalManualEntries++;
+        }
+      });
+    });
+
+    return {
+      totalBulkImports,
+      totalManualEntries,
+      uniqueBulkImportBatches: bulkImportBatches.size,
+      totalActivities: totalBulkImports + totalManualEntries
+    };
+  } catch (error) {
+    console.error('Get bulk import stats error:', error);
+    throw new Error(`Failed to get stats: ${error.message}`);
+  }
+};
+
 module.exports = {
   getAllReports,
   getReportById,
@@ -1000,6 +1172,13 @@ module.exports = {
   approveReport,
   rejectReport,
   autoSaveReport,
+  bulkImportActivities,
+  getActivitiesByBulkImportId,
+  getBulkImportStats,
   getTemplate,
-  updateSection
+  updateSection,
+  // Transformation utilities (exported for testing)
+  transformActivitiesToBackend,
+  transformActivitiesToFrontend,
+  migrateLegacyActivities
 };

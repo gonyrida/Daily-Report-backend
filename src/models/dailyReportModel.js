@@ -134,6 +134,52 @@ const dailyReportSchema = new mongoose.Schema(
       footers: [{ type: String }]
     }],
 
+    // NEW: Add activities section for bulk import support
+    activities: {
+      weeklyActivities: [{
+        description: String,
+        percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
+        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        bulkImportId: String, // NEW: Track which bulk import batch this belongs to
+        addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        // Legacy support for old nested structure
+        percentage: String, // Keep for backward compatibility
+        subActivities: [{
+          description: String,
+          percentage: String,
+          subActivities: [{
+            description: String,
+            percentage: String,
+            subActivities: [{
+              description: String,
+              percentage: String
+            }]
+          }]
+        }]
+      }],
+      nextWeekPlan: [{
+        description: String,
+        percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
+        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        bulkImportId: String, // NEW: Track which bulk import batch this belongs to
+        addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        // Legacy support for old nested structure
+        percentage: String, // Keep for backward compatibility
+        subActivities: [{
+          description: String,
+          percentage: String,
+          subActivities: [{
+            description: String,
+            percentage: String,
+            subActivities: [{
+              description: String,
+              percentage: String
+            }]
+          }]
+        }]
+      }]
+    },
+
     description: {
       type: String,
       default: "",
