@@ -98,7 +98,12 @@ const weeklyReportSchema = new mongoose.Schema({
     activities: {
       weeklyActivities: [{
         description: String,
-        percentage: String,
+        percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
+        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        bulkImportId: String, // NEW: Track which bulk import batch this belongs to
+        addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        // Legacy support for old nested structure
+        percentage: String, // Keep for backward compatibility
         subActivities: [{
           description: String,
           percentage: String,
@@ -114,7 +119,12 @@ const weeklyReportSchema = new mongoose.Schema({
       }],
       nextWeekPlan: [{
         description: String,
-        percentage: String,
+        percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
+        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        bulkImportId: String, // NEW: Track which bulk import batch this belongs to
+        addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        // Legacy support for old nested structure
+        percentage: String, // Keep for backward compatibility
         subActivities: [{
           description: String,
           percentage: String,
@@ -371,6 +381,16 @@ const weeklyReportSchema = new mongoose.Schema({
       problem: String,
       actionBy: String,
       photo: String
+    }],
+    
+    masterSchedule: [{
+      id: String,
+      type: String,
+      title: String,
+      description: String,
+      date: String,
+      fileName: String,
+      fileData: { type: String, default: "" } // Base64 encoded file data, optional
     }]
   },
   
