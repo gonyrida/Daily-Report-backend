@@ -3,7 +3,7 @@ const { MONGODB_URI } = require("./env");
 
 const connectDB = async () => {
   try {
-    await mongoose.connect(MONGODB_URI,{
+    await mongoose.connect(MONGODB_URI, {
       family: 4
     });
     console.log("MongoDB connected successfully");
