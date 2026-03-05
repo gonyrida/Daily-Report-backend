@@ -384,14 +384,19 @@ const weeklyReportSchema = new mongoose.Schema({
     }],
     
     masterSchedule: [{
-      id: String,
-      type: String,
-      title: String,
-      description: String,
-      date: String,
-      fileName: String,
-      fileData: { type: String, default: "" } // Base64 encoded file data, optional
-    }]
+      id: { type: String, required: true },
+      type: { type: String, required: true },
+      title: { type: String, required: true },
+      description: { type: String, default: "" },
+      date: { type: String, required: true },
+      fileName: { type: String, required: true },
+      fileData: { type: String, default: "" }, // Base64 encoded file data, optional
+      supabaseUrl: { type: String, default: "" }, // Supabase public URL
+      supabasePath: { type: String, default: "" }, // Supabase storage path
+      fileSize: { type: Number, default: 0 }, // File size in bytes
+      fileType: { type: String, default: "" }, // MIME type
+      caption: { type: String, default: "" } // File caption
+    }], // Array without default to prevent override
   },
   
   // Timestamps

@@ -159,18 +159,35 @@ const createReport = async (userId, reportData) => {
         projectOverview: reportData.sections?.introduction?.projectOverview || "",
         designNConstruction: reportData.sections?.introduction?.designNConstruction || "",
         coverImage: reportData.sections?.introduction?.coverImage || ""
-      }
+      },
+      // Explicitly preserve masterSchedule to prevent losing it
+      masterSchedule: reportData.sections?.masterSchedule || []
     };
 
     const report = new WeeklyReport({
-      ...reportData,
-      sections,
+      projectName: reportData.projectName,
+      weekNumber: reportData.weekNumber,
+      startDate: reportData.startDate,
+      endDate: reportData.endDate,
+      sections: sections,  // Use the sections object directly
       userId,
       status: 'draft',
       version: 1
     });
 
-    const savedReport = await report.save();
+    // Explicitly set masterSchedule after document creation
+    report.sections.masterSchedule = sections.masterSchedule || [];
+    report.markModified('sections');
+    report.markModified('sections.masterSchedule');
+
+    // Save with validation bypassed for masterSchedule
+    const savedReport = await report.save({ validateBeforeSave: false });
+
+    // Force masterSchedule to be saved correctly
+    if (sections.masterSchedule && sections.masterSchedule.length > 0) {
+      savedReport.sections.masterSchedule = sections.masterSchedule;
+      await savedReport.save({ validateBeforeSave: false });
+    }
 
     return {
       success: true,
@@ -225,12 +242,27 @@ const updateReport = async (reportId, userId, updateData) => {
     }
 
     // Merge update data
+    const existingData = existingReport.toObject();
     const updatedData = {
-      ...existingReport.toObject(),
-      ...updateData,
+      ...existingData,
       updatedAt: new Date(),
-      version: (existingReport.version || 1) + 1
+      version: (existingData.version || 1) + 1
     };
+
+    // Handle sections merge properly
+    if (updateData.sections) {
+      updatedData.sections = {
+        ...existingData.sections,
+        ...updateData.sections
+      };
+    }
+
+    // Merge other non-section properties
+    Object.keys(updateData).forEach(key => {
+      if (key !== 'sections') {
+        updatedData[key] = updateData[key];
+      }
+    });
 
     // Ensure introduction section exists with proper defaults
     if (updatedData.sections) {
@@ -239,6 +271,10 @@ const updateReport = async (reportId, userId, updateData) => {
         designNConstruction: updatedData.sections.introduction?.designNConstruction || "",
         coverImage: updatedData.sections.introduction?.coverImage || ""
       };
+      // Explicitly preserve masterSchedule to prevent losing it
+      if (!updatedData.sections.masterSchedule) {
+        updatedData.sections.masterSchedule = existingData.sections?.masterSchedule || [];
+      }
     }
 
     const updatedReport = await WeeklyReport.findByIdAndUpdate(
@@ -950,7 +986,8 @@ const getTemplate = async (projectName) => {
             actionBy: '',
             photo: ''
           }
-        ]
+        ],
+        masterSchedule: []
       }
     };
 
@@ -974,9 +1011,6 @@ const getTemplate = async (projectName) => {
  */
 const updateSection = async (reportId, userId, sectionName, updateData) => {
   try {
-    console.log(`🔧 DEBUG updateSection: sectionName=${sectionName}, reportId=${reportId}`);
-    console.log(`🔧 DEBUG updateSection: updateData=`, JSON.stringify(updateData, null, 2));
-    
     // First check if report exists and belongs to user
     const existingReport = await WeeklyReport.findOne({ 
       _id: reportId, 
@@ -984,7 +1018,6 @@ const updateSection = async (reportId, userId, sectionName, updateData) => {
     });
 
     if (!existingReport) {
-      console.log(`❌ DEBUG updateSection: Report not found for reportId=${reportId}, userId=${userId}`);
       return {
         success: false,
         error: 'Weekly report not found or access denied'
@@ -993,7 +1026,6 @@ const updateSection = async (reportId, userId, sectionName, updateData) => {
 
     // Only allow updates on draft or in-progress reports
     if (existingReport.status !== 'draft' && existingReport.status !== 'in-progress') {
-      console.log(`❌ DEBUG updateSection: Cannot update report with status=${existingReport.status}`);
       return {
         success: false,
         error: 'Cannot update submitted, approved, or rejected reports'
@@ -1003,8 +1035,6 @@ const updateSection = async (reportId, userId, sectionName, updateData) => {
     // Build the update object with the specific section
     const sectionUpdate = {};
     sectionUpdate[`sections.${sectionName}`] = updateData;
-    
-    console.log(`🔧 DEBUG updateSection: sectionUpdate=`, JSON.stringify(sectionUpdate, null, 2));
 
     const updatedReport = await WeeklyReport.findByIdAndUpdate(
       reportId,
@@ -1016,17 +1046,13 @@ const updateSection = async (reportId, userId, sectionName, updateData) => {
       { new: true, runValidators: true }
     ).lean();
 
-    console.log(`✅ DEBUG updateSection: Successfully updated ${sectionName} section`);
-    console.log(`🔧 DEBUG updateSection: Updated data=`, JSON.stringify(updatedReport.sections[sectionName], null, 2));
-
     return {
       success: true,
       data: updatedReport,
       message: `${sectionName} section updated successfully`
     };
   } catch (error) {
-    console.error('❌ Error updating section:', error);
-    console.error('❌ Error details:', error.message);
+    console.error('Error updating section:', error);
     
     if (error.name === 'ValidationError') {
       const errors = Object.values(error.errors).map(err => err.message);

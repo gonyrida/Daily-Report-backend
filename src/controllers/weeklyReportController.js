@@ -434,6 +434,24 @@ const validateWeeklyReport = async (req, res) => {
       warnings.push('No overall progress items recorded');
     }
 
+    // Validate master schedule if present
+    if (report.sections.masterSchedule && Array.isArray(report.sections.masterSchedule)) {
+      report.sections.masterSchedule.forEach((schedule, index) => {
+        if (!schedule.id) {
+          errors.push(`Master schedule item ${index + 1} is missing ID`);
+        }
+        if (!schedule.type) {
+          errors.push(`Master schedule item ${index + 1} is missing type`);
+        }
+        if (!schedule.title) {
+          errors.push(`Master schedule item ${index + 1} is missing title`);
+        }
+        if (!schedule.date) {
+          errors.push(`Master schedule item ${index + 1} is missing date`);
+        }
+      });
+    }
+
     const isValid = errors.length === 0;
 
     res.status(200).json({

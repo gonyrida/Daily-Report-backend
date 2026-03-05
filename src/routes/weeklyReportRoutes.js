@@ -241,6 +241,43 @@ router.patch('/:id/qaqc-status', async (req, res) => {
   }
 });
 
+// PATCH /api/weekly-reports/:id/master-schedule - Update master schedule section
+router.patch('/:id/master-schedule', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+    const updateData = req.body;
+
+    console.log(`🔧 DEBUG ROUTE: PATCH /api/weekly-reports/${id}/master-schedule`);
+    console.log(`🔧 DEBUG ROUTE: userId=${userId}`);
+    console.log(`🔧 DEBUG ROUTE: updateData=`, JSON.stringify(updateData, null, 2));
+
+    const result = await weeklyReportService.updateSection(id, userId, 'masterSchedule', updateData);
+
+    if (result.success) {
+      console.log(`✅ DEBUG ROUTE: Successfully updated master schedule`);
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        message: 'Master schedule section updated successfully'
+      });
+    } else {
+      console.log(`❌ DEBUG ROUTE: Failed to update master schedule - ${result.error}`);
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('❌ Controller error in updateMasterSchedule:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
 // POST /api/weekly-reports/:id/validate - Validate weekly report
 router.post('/:id/validate', validateWeeklyReport);
 
