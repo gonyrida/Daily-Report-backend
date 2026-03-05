@@ -116,7 +116,7 @@ const purchaseRequestSchema = new mongoose.Schema(
       },
       status: {
         type: String,
-        enum: ["pending", "completed", "skipped"],
+        enum: ["pending", "completed", "skipped", "rejected", "approved"],
         default: "pending"
       },
       timestamp: {

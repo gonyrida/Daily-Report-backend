@@ -5,6 +5,9 @@ const {
   validateApproverWorkflow
 } = require("../helpers/validationApproverWorkflow");
 
+// Define order of the approval workflow roles
+const ROLE_ORDER = ['checked','verified','approved'];
+
 // @desc    Create new purchase request
 // @route   POST /api/purchase-requests
 // @access  Private (all authenticated users)
@@ -294,15 +297,69 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
       step => step.role === role
     );
 
-    if (workflowStep) {
+    if (!workflowStep) {
+      return res.status(400).json({
+        success: false,
+        message: "Workflow step not found"
+      });
+    }
+    
+    // Handle rejection immediately (no sequential validation needed)
+    if (status === 'rejected') {
       workflowStep.approver = approverId;
-      workflowStep.status = 'completed';
+      workflowStep.status = 'rejected';
       workflowStep.timestamp = new Date();
       workflowStep.notes = notes;
+      
+      purchaseRequest.status = 'rejected';
+      await purchaseRequest.save();
+      
+      return res.status(200).json({
+        success: true,
+        message: "Purchase request rejected successfully",
+        data: purchaseRequest
+      });
     }
 
-    // Update overall status
-    purchaseRequest.status = status;
+    const currentIdx = ROLE_ORDER.indexOf(role);
+    if (currentIdx > 0) {
+      const earlierIncomplete = purchaseRequest.approvalWorkflow
+        .filter(s => ROLE_ORDER.indexOf(s.role) < currentIdx)
+        .some(s => s.status !== 'approved' && s.status !== 'rejected' && s.status !== 'completed');
+      if (earlierIncomplete) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot act on this step until previous step(s) are completed'
+        });
+      }
+    }
+
+    // Update workflow step for approval
+    workflowStep.approver = approverId;
+    workflowStep.status = 'approved';
+    workflowStep.timestamp = new Date();
+    workflowStep.notes = notes;
+
+    // Determine overall purchase request status:
+    // - If this action is a rejection, mark request as 'rejected'
+    // - Else if all workflow steps are completed -> 'approved'
+    // - Otherwise keep as 'pending'
+    const allApproved = purchaseRequest.approvalWorkflow.every(s => 
+      (s.role === 'prepared' && s.status === 'completed') || 
+      (s.role !== 'prepared' && s.status === 'approved')
+    );
+    const hasRejection = purchaseRequest.approvalWorkflow.some(s => s.status === 'rejected');
+
+    if (hasRejection) {
+      purchaseRequest.status = 'rejected';
+    } else if (allApproved) {
+      purchaseRequest.status = 'approved';
+    } else {
+      purchaseRequest.status = 'pending';
+    }
+
+    console.log('Updated workflow step:', workflowStep);
+    console.log('Full workflow after update:', purchaseRequest.approvalWorkflow);
 
     await purchaseRequest.save();
 
@@ -505,6 +562,25 @@ exports.updatePurchaseRequest = async (req, res) => {
       });
     }
 
+    // disallow edits once the status has moved past the initial state
+    if (!['draft', 'pending'].includes(purchaseRequest.status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot edit a request after it has been processed"
+      });
+    }
+
+    // or inspect the workflow itself
+    const approvalStarted = purchaseRequest.approvalWorkflow.some(
+      step => step.role !== 'prepared' && step.status === 'completed'
+    );
+    if (approvalStarted) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot modify request after an approver has completed a step"
+      });
+    }
+
     // Validate approver workflow when updating
     if (approvers) {
       const workflowValidation = validateApproverWorkflow(approvers, purchaseRequest.createdBy);
@@ -582,8 +658,7 @@ exports.getPendingApprovals = async (req, res) => {
     };
 
     const requests = await PurchaseRequest.find(query)
-      .populate('createdBy', 'firstName lastName email')
-      .populate('approvalWorkflow.approver', 'firstName lastName email role');
+      .populate('createdBy', 'firstName lastName email approvalWorkflow')
 
     res.status(200).json({
       success: true,
