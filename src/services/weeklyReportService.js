@@ -1,5 +1,6 @@
 const WeeklyReport = require('../models/WeeklyReport');
 const DailyReport = require('../models/dailyReportModel'); // NEW: Import Daily Report model
+const { aggregateManpowerData, updateWeeklyReportManpower } = require('../utils/manpowerAggregation');
 
 /**
  * Transform frontend activity data to backend format
@@ -881,51 +882,51 @@ const getTemplate = async (projectName) => {
               {
                 description: '',
                 date: {
-                  fri: '',
-                  sat: '',
-                  sun: '',
-                  mon: '',
-                  tue: '',
-                  wed: '',
-                  thu: ''
+                  fri: 0,
+                  sat: 0,
+                  sun: 0,
+                  mon: 0,
+                  tue: 0,
+                  wed: 0,
+                  thu: 0
                 },
-                prevWeek: '',
-                thisWeek: '',
-                accumulated: ''
+                prevWeek: 0,
+                thisWeek: 0,
+                accumulated: 0
               }
             ],
             workingTeamInterior: [
               {
                 description: '',
                 date: {
-                  fri: '',
-                  sat: '',
-                  sun: '',
-                  mon: '',
-                  tue: '',
-                  wed: '',
-                  thu: ''
+                  fri: 0,
+                  sat: 0,
+                  sun: 0,
+                  mon: 0,
+                  tue: 0,
+                  wed: 0,
+                  thu: 0
                 },
-                prevWeek: '',
-                thisWeek: '',
-                accumulated: ''
+                prevWeek: 0,
+                thisWeek: 0,
+                accumulated: 0
               }
             ],
             workingTeamMEP: [
               {
                 description: '',
                 date: {
-                  fri: '',
-                  sat: '',
-                  sun: '',
-                  mon: '',
-                  tue: '',
-                  wed: '',
-                  thu: ''
+                  fri: 0,
+                  sat: 0,
+                  sun: 0,
+                  mon: 0,
+                  tue: 0,
+                  wed: 0,
+                  thu: 0
                 },
-                prevWeek: '',
-                thisWeek: '',
-                accumulated: ''
+                prevWeek: 0,
+                thisWeek: 0,
+                accumulated: 0
               }
             ]
           },
@@ -933,26 +934,26 @@ const getTemplate = async (projectName) => {
             {
               description: '',
               unit: '',
-              prevWeek: '',
-              thisWeek: '',
-              accumulated: ''
+              prevWeek: 0,
+              thisWeek: 0,
+              accumulated: 0
             }
           ],
           machinery: [
             {
               description: '',
               date: {
-                fri: '',
-                sat: '',
-                sun: '',
-                mon: '',
-                tue: '',
-                wed: '',
-                thu: ''
+                fri: 0,
+                sat: 0,
+                sun: 0,
+                mon: 0,
+                tue: 0,
+                wed: 0,
+                thu: 0
               },
-              prevWeek: '',
-              thisWeek: '',
-              accumulated: ''
+              prevWeek: 0,
+              thisWeek: 0,
+              accumulated: 0
             }
           ]
         },
@@ -1188,6 +1189,75 @@ const getBulkImportStats = async (userId) => {
   }
 };
 
+/**
+ * Aggregate manpower data for a weekly report
+ * @param {string} projectName - Project name
+ * @param {Date} startDate - Week start date
+ * @param {Date} endDate - Week end date
+ * @param {Object} options - Options for aggregation
+ * @returns {Promise<Object>} - Aggregated manpower data
+ */
+const aggregateWeeklyManpower = async (projectName, startDate, endDate, options = {}) => {
+  return await aggregateManpowerData(projectName, startDate, endDate, options);
+};
+
+/**
+ * Update weekly report with aggregated manpower data
+ * @param {string} reportId - Weekly report ID
+ * @param {Object} options - Options for aggregation
+ * @returns {Promise<Object>} - Update result
+ */
+const updateReportManpower = async (reportId, options = {}) => {
+  return await updateWeeklyReportManpower(reportId, options);
+};
+
+/**
+ * Create weekly report with automatic manpower aggregation
+ * @param {string} userId - User ID
+ * @param {Object} reportData - Report data
+ * @param {Object} aggregationOptions - Options for manpower aggregation
+ * @returns {Promise<Object>} - Created report with aggregated manpower
+ */
+const createReportWithManpower = async (userId, reportData, aggregationOptions = {}) => {
+  try {
+    // Create the weekly report first
+    const createResult = await createReport(userId, reportData);
+    
+    if (!createResult.success) {
+      return createResult;
+    }
+    
+    // Aggregate manpower data
+    const manpowerResult = await updateWeeklyReportManpower(
+      createResult.data._id,
+      aggregationOptions
+    );
+    
+    if (!manpowerResult.success) {
+      console.warn('Manpower aggregation failed:', manpowerResult.error);
+      // Still return the created report, but with a warning
+      return {
+        ...createResult,
+        warning: 'Report created but manpower aggregation failed'
+      };
+    }
+    
+    return {
+      success: true,
+      data: manpowerResult.data,
+      message: 'Weekly report created with manpower aggregation successfully'
+    };
+    
+  } catch (error) {
+    console.error('Error creating report with manpower:', error);
+    return {
+      success: false,
+      error: 'Failed to create report with manpower aggregation',
+      details: error.message
+    };
+  }
+};
+
 module.exports = {
   getAllReports,
   getReportById,
@@ -1203,6 +1273,10 @@ module.exports = {
   getBulkImportStats,
   getTemplate,
   updateSection,
+  // Manpower aggregation functions
+  aggregateWeeklyManpower,
+  updateReportManpower,
+  createReportWithManpower,
   // Transformation utilities (exported for testing)
   transformActivitiesToBackend,
   transformActivitiesToFrontend,

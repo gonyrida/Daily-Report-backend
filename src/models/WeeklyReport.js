@@ -295,70 +295,70 @@ const weeklyReportSchema = new mongoose.Schema({
         managementTeam: [{
           description: String,
           date: {
-            fri: String,
-            sat: String,
-            sun: String,
-            mon: String,
-            tue: String,
-            wed: String,
-            thu: String
+            fri: { type: Number, default: 0 },
+            sat: { type: Number, default: 0 },
+            sun: { type: Number, default: 0 },
+            mon: { type: Number, default: 0 },
+            tue: { type: Number, default: 0 },
+            wed: { type: Number, default: 0 },
+            thu: { type: Number, default: 0 }
           },
-          prevWeek: String,
-          thisWeek: String,
-          accumulated: String
+          prevWeek: { type: Number, default: 0 },
+          thisWeek: { type: Number, default: 0 },
+          accumulated: { type: Number, default: 0 }
         }],
         workingTeamInterior: [{
           description: String,
           date: {
-            fri: String,
-            sat: String,
-            sun: String,
-            mon: String,
-            tue: String,
-            wed: String,
-            thu: String
+            fri: { type: Number, default: 0 },
+            sat: { type: Number, default: 0 },
+            sun: { type: Number, default: 0 },
+            mon: { type: Number, default: 0 },
+            tue: { type: Number, default: 0 },
+            wed: { type: Number, default: 0 },
+            thu: { type: Number, default: 0 }
           },
-          prevWeek: String,
-          thisWeek: String,
-          accumulated: String
+          prevWeek: { type: Number, default: 0 },
+          thisWeek: { type: Number, default: 0 },
+          accumulated: { type: Number, default: 0 }
         }],
         workingTeamMEP: [{
           description: String,
           date: {
-            fri: String,
-            sat: String,
-            sun: String,
-            mon: String,
-            tue: String,
-            wed: String,
-            thu: String
+            fri: { type: Number, default: 0 },
+            sat: { type: Number, default: 0 },
+            sun: { type: Number, default: 0 },
+            mon: { type: Number, default: 0 },
+            tue: { type: Number, default: 0 },
+            wed: { type: Number, default: 0 },
+            thu: { type: Number, default: 0 }
           },
-          prevWeek: String,
-          thisWeek: String,
-          accumulated: String
+          prevWeek: { type: Number, default: 0 },
+          thisWeek: { type: Number, default: 0 },
+          accumulated: { type: Number, default: 0 }
         }]
       },
       material: [{
         description: String,
         unit: String,
-        prevWeek: String,
-        thisWeek: String,
-        accumulated: String
+        prevWeek: { type: Number, default: 0 },
+        thisWeek: { type: Number, default: 0 },
+        accumulated: { type: Number, default: 0 }
       }],
       machinery: [{
         description: String,
         date: {
-          fri: String,
-          sat: String,
-          sun: String,
-          mon: String,
-          tue: String,
-          wed: String,
-          thu: String
+          fri: { type: Number, default: 0 },
+          sat: { type: Number, default: 0 },
+          sun: { type: Number, default: 0 },
+          mon: { type: Number, default: 0 },
+          tue: { type: Number, default: 0 },
+          wed: { type: Number, default: 0 },
+          thu: { type: Number, default: 0 }
         },
-        prevWeek: String,
-        thisWeek: String,
-        accumulated: String
+        prevWeek: { type: Number, default: 0 },
+        thisWeek: { type: Number, default: 0 },
+        accumulated: { type: Number, default: 0 }
       }]
     },
     

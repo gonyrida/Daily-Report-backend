@@ -91,14 +91,23 @@ const createWeeklyReport = async (req, res) => {
   try {
     const userId = req.user.userId;
     const reportData = req.body;
+    const { aggregateManpower = false, aggregationOptions = {} } = req.body;
 
-    const result = await weeklyReportService.createReport(userId, reportData);
+    let result;
+    if (aggregateManpower) {
+      // Create with automatic manpower aggregation
+      result = await weeklyReportService.createReportWithManpower(userId, reportData, aggregationOptions);
+    } else {
+      // Create without aggregation (original behavior)
+      result = await weeklyReportService.createReport(userId, reportData);
+    }
 
     if (result.success) {
       res.status(201).json({
         success: true,
         data: result.data,
-        message: result.message
+        message: result.message,
+        warning: result.warning || null
       });
     } else {
       res.status(400).json({
@@ -472,6 +481,84 @@ const validateWeeklyReport = async (req, res) => {
   }
 };
 
+/**
+ * Aggregate manpower data for a weekly report
+ */
+const aggregateManpower = async (req, res) => {
+  try {
+    const { projectName, startDate, endDate } = req.query;
+    const { includePrevWeek = false, includeAccumulated = false } = req.body;
+
+    if (!projectName || !startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: projectName, startDate, endDate'
+      });
+    }
+
+    const options = { includePrevWeek, includeAccumulated };
+    const result = await weeklyReportService.aggregateWeeklyManpower(
+      projectName,
+      new Date(startDate),
+      new Date(endDate),
+      options
+    );
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('Controller error in aggregateManpower:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Update weekly report with aggregated manpower data
+ */
+const updateReportManpower = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { includePrevWeek = false, includeAccumulated = false } = req.body;
+
+    const options = { includePrevWeek, includeAccumulated };
+    const result = await weeklyReportService.updateReportManpower(id, options);
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('Controller error in updateReportManpower:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
 module.exports = {
   getWeeklyReports,
   getWeeklyReportById,
@@ -484,5 +571,8 @@ module.exports = {
   autoSaveWeeklyReport,
   getWeeklyReportTemplate,
   duplicateWeeklyReport,
-  validateWeeklyReport
+  validateWeeklyReport,
+  // Manpower aggregation endpoints
+  aggregateManpower,
+  updateReportManpower
 };

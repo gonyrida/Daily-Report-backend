@@ -13,7 +13,9 @@ const {
   autoSaveWeeklyReport,
   getWeeklyReportTemplate,
   duplicateWeeklyReport,
-  validateWeeklyReport
+  validateWeeklyReport,
+  aggregateManpower,
+  updateReportManpower
 } = require('../controllers/weeklyReportController');
 
 // GET /api/weekly-reports - Get all weekly reports for user
@@ -280,5 +282,11 @@ router.patch('/:id/master-schedule', async (req, res) => {
 
 // POST /api/weekly-reports/:id/validate - Validate weekly report
 router.post('/:id/validate', validateWeeklyReport);
+
+// POST /api/weekly-reports/aggregate-manpower - Aggregate manpower data
+router.post('/aggregate-manpower', aggregateManpower);
+
+// POST /api/weekly-reports/:id/update-manpower - Update report with aggregated manpower
+router.post('/:id/update-manpower', updateReportManpower);
 
 module.exports = router;
