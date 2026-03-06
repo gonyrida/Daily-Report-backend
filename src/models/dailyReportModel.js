@@ -241,7 +241,7 @@ dailyReportSchema.index({ projectName: 1, reportDate: 1 });
 dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
 dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
 dailyReportSchema.index({ companyId: 1, reportDate: -1 });
-dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1 }, { unique: true }); // Prevent duplicate reports
+dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1, location: 1 }, { unique: true }); // Prevent duplicate reports per location
 
 const DailyReport = mongoose.model("DailyReport", dailyReportSchema);
 

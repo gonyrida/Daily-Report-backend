@@ -16,7 +16,9 @@ const {
   getRecentReports,
   deleteReport,
   getCompanyReports,
-  getCompanyProjects
+  getCompanyProjects,
+  getLocations,
+  getDailyReportsByLocation
 } = require("../controllers/dailyReportController");
 
 // Import bulk import functions from weekly report service
@@ -28,9 +30,11 @@ const {
 
 // Use 'authenticateToken' instead of 'authMiddleware'
 router.get("/", authenticateToken, getDailyReports);
-router.get("/recent", authenticateToken, getRecentReports); // New: Recent reports for dashboard
-router.get("/projects", authenticateToken, getCompanyProjects); // Add this route
+router.get("/recent", authenticateToken, getRecentReports);
+router.get("/projects", authenticateToken, getCompanyProjects);
 router.get("/company", authenticateToken, getCompanyReports);
+router.get("/locations", authenticateToken, getLocations);
+router.get("/by-location", authenticateToken, getDailyReportsByLocation);
 router.get("/:reportId", authenticateToken, getReportById);
 router.post("/", authenticateToken, createNewReport);
 router.post("/blank", authenticateToken, createBlankReport); // New: Create blank report immediately
