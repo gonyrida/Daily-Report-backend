@@ -17,6 +17,7 @@ const {
 const { validatePasswordStrength } = require("../utils/passwordValidator");
 const { generateEmailVerificationToken, verifyEmailToken } = require("../utils/generateEmailVerificationToken");
 const { getEmailVerificationTemplate } = require("../utils/emailTemplates");
+const { findEmployeeByEmail } = require("../data/employees");
 const crypto = require("crypto");
 const env = require("../config/env");
 
@@ -230,30 +231,64 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email /*, password */ } = req.body;
 
-    // Validation
-    // This is commented out for testing purposes
-    // Make sure to uncomment it before deploy and 
-    // remove if (!email) { when you uncomment if (!email || !password) {
-    // if (!email || !password) {
+    // Validation - only email required for now
+    // Original validation: if (!email || !password) {
     if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "Email is required", // Original: "Email and password are required",
       });
     }
 
-    // Find user and include password for comparison
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password"
-    );
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid email format",
+      });
+    }
 
-    if (!user) {
+    // Original domain restriction - commented out since we validate against employee list
+    // Check if email is from cambodiacpm.com domain
+    // const emailDomain = email.toLowerCase().split('@')[1];
+    // if (emailDomain !== "cambodiacpm.com") {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Only company email addresses are allowed",
+    //   });
+    // }
+
+    // Find employee in our employee data
+    const employee = findEmployeeByEmail(email);
+    if (!employee) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Email not found in employee records",
       });
+    }
+
+    // Find or create user in database
+    let user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      // Create new user if not exists
+      const userData = {
+        email: email.toLowerCase(),
+        password: "DefaultPassword123!", // Required by schema but won't be used
+        firstName: employee.name.split(' ')[0] || "",
+        lastName: employee.name.split(' ').slice(1).join(' ') || "",
+        companyId: "6975e43e400dcc89c6f92463", // CACPM company ID
+        emailVerified: true, // Auto-verify since it's in employee list
+        isActive: true,
+        role: employee.role || "user"
+      };
+
+      user = new User(userData);
+      await user.save();
+      console.log("✅ Created new user for employee:", email);
     }
 
     // Check if account is active
@@ -264,19 +299,25 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Original password validation - commented out for email-only authentication
     // Check if email is verified
-    if (!user.emailVerified) {
-      return res.status(403).json({
-        success: false,
-        message: "Please verify your email address before logging in. Check your inbox for the verification email.",
-        emailVerificationRequired: true,
-      });
-    }
+    // if (!user.emailVerified) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Please verify your email address before logging in. Check your inbox for the verification email.",
+    //     emailVerificationRequired: true,
+    //   });
+    // }
 
-    // This is commented out for testing purposes
-    // Make sure to uncomment it before deploy
-    // Compare password
-    // const isPasswordValid = await user.comparePassword(password);
+    // Original password comparison - commented out for email-only authentication
+    // const userWithPassword = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    // if (!userWithPassword) {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: "Invalid credentials",
+    //   });
+    // }
+    // const isPasswordValid = await userWithPassword.comparePassword(password);
     // if (!isPasswordValid) {
     //   return res.status(401).json({
     //     success: false,
@@ -303,19 +344,33 @@ exports.login = async (req, res) => {
 
     // Set HTTP-only cookie with the token
     const isProduction = process.env.NODE_ENV === "production";
-    res.cookie("token", token, {
+    const cookieOptions = {
       httpOnly: true, // Prevents JavaScript access (XSS protection)
       secure: isProduction, // HTTPS only in production
       sameSite: isProduction ? "None" : "strict", // "None" for cross-site on Render
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: "/",
-      domain: ".cambodiacpm.com",  // This is the key!
-    });
+    };
+
+    // Only set domain in production
+    if (isProduction) {
+      cookieOptions.domain = ".cambodiacpm.com";
+    }
+
+    res.cookie("token", token, cookieOptions);
+
+    // Return user data with employee information
+    const userData = user.toJSON();
+    userData.employeeInfo = {
+      name: employee.name,
+      position: employee.position,
+      department: employee.department
+    };
 
     res.status(200).json({
       success: true,
       message: "Login successful",
-      user: user.toJSON(),
+      user: userData,
       token: token,
     });
   } catch (error) {
