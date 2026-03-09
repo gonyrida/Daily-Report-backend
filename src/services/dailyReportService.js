@@ -218,28 +218,43 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     console.log("DEBUG BACKEND SERVICE: Searching for existing report:", {
       userId,
       projectName,
+      location: reportData.location,
       startOfDay: startOfDay.toISOString(),
       endOfDay: endOfDay.toISOString(),
     });
 
-    // Find existing report for this user, project, and date
-    let report = await DailyReport.findOne({
+    // Find existing report for this user, project, date, AND location
+    const query = {
       userId,
       projectName,
       reportDate: { $gte: startOfDay, $lte: endOfDay },
-    }).session(session);
+    };
+    
+    // Add location to query if provided
+    if (reportData.location) {
+      query.location = reportData.location;
+    }
+    
+    let report = await DailyReport.findOne(query).session(session);
 
     console.log(
       "DEBUG BACKEND SERVICE: Existing report found:",
       report ? "YES" : "NO"
     );
 
-    // 🔥 FIX #1: Get the previous report with projectName filter
-    const previousReport = await DailyReport.findOne({
+    // 🔥 FIX #1: Get the previous report with projectName AND location filter
+    const previousReportQuery = {
       userId,
       projectName,  // ← CRITICAL FIX: Must match same project!
       reportDate: { $lt: startOfDay },
-    })
+    };
+    
+    // Add location to previous report query if current location is provided
+    if (reportData.location) {
+      previousReportQuery.location = reportData.location;
+    }
+    
+    const previousReport = await DailyReport.findOne(previousReportQuery)
       .sort({ reportDate: -1 })
       .session(session);
 
@@ -495,11 +510,18 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     }
 
     // Check if there are future reports that need recalculation
-    const futureReports = await DailyReport.find({
+    const futureReportsQuery = {
       userId,
       projectName,  // ← Also filter future reports by project
       reportDate: { $gt: endOfDay },
-    })
+    };
+    
+    // Add location to future reports query if current location is provided
+    if (reportData.location) {
+      futureReportsQuery.location = reportData.location;
+    }
+    
+    const futureReports = await DailyReport.find(futureReportsQuery)
       .sort({ reportDate: 1 })
       .session(session);
 
@@ -890,6 +912,24 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
   }
 };
 
+const getReportsByLocation = async (userId, location = null) => {
+  try {
+    const query = { userId };
+    
+    if (location) {
+      query.location = location;
+    }
+    
+    const reports = await DailyReport.find(query)
+      .sort({ reportDate: -1, updatedAt: -1 });
+    
+    return reports;
+  } catch (error) {
+    console.error("Get reports by location error:", error);
+    throw error;
+  }
+};
+
 module.exports = {
   getAllReports,
   getReportById,
@@ -902,4 +942,5 @@ module.exports = {
   getRecentReports,
   createBlankReport,
   getCompanyReports,
+  getReportsByLocation,
 };

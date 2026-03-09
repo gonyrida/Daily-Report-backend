@@ -1,6 +1,7 @@
 const dailyReportService = require("../services/dailyReportService");
 const notificationService = require("../services/notificationService");
 const DailyReport = require('../models/dailyReportModel');
+const { CAMBODIA_LOCATIONS } = require('../data/cambodiaLocations');
 
 // Get all reports for authenticated user
 const getDailyReports = async (req, res) => {
@@ -545,6 +546,28 @@ const getCompanyProjects = async (req, res) => {
   }
 };
 
+const getLocations = async (req, res) => {
+  try {
+    res.status(200).json({
+      success: true,
+      locations: CAMBODIA_LOCATIONS
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const getDailyReportsByLocation = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { location } = req.query;
+    const reports = await dailyReportService.getReportsByLocation(userId, location);
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getDailyReports,
   getReportById,
@@ -558,5 +581,7 @@ module.exports = {
   getRecentReports,
   deleteReport,
   getCompanyReports,
-  getCompanyProjects
+  getCompanyProjects,
+  getLocations,
+  getDailyReportsByLocation
 };
