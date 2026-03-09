@@ -303,7 +303,7 @@ exports.login = async (req, res) => {
       sameSite: isProduction ? "None" : "strict", // "None" for cross-site on Render
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: "/",
-      domain: ".officemuckup.com",  // This is the key!
+      domain: ".cambodiacpm.com",  // This is the key!
     });
 
     res.status(200).json({
