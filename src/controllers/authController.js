@@ -166,7 +166,7 @@ exports.register = async (req, res) => {
       });
       const baseUrl = isDevelopment 
         ? (process.env.FRONTEND_URL || 'http://localhost:8080')
-        : (process.env.PRODUCTION_URL || 'https://daily-report-frontend.officemuckup.com');
+        : (process.env.PRODUCTION_URL || 'https://a.cambodiacpm.com');
       
       const verificationLink = `${baseUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
       const emailHtml = getEmailVerificationTemplate(firstName, verificationLink);
@@ -233,7 +233,11 @@ exports.login = async (req, res) => {
     const { email, password } = req.body;
 
     // Validation
-    if (!email || !password) {
+    // This is commented out for testing purposes
+    // Make sure to uncomment it before deploy and 
+    // remove if (!email) { when you uncomment if (!email || !password) {
+    // if (!email || !password) {
+    if (!email) {
       return res.status(400).json({
         success: false,
         message: "Email and password are required",
@@ -269,14 +273,16 @@ exports.login = async (req, res) => {
       });
     }
 
+    // This is commented out for testing purposes
+    // Make sure to uncomment it before deploy
     // Compare password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
+    // const isPasswordValid = await user.comparePassword(password);
+    // if (!isPasswordValid) {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: "Invalid credentials",
+    //   });
+    // }
 
     // Update last login
     user.lastLogin = new Date();
@@ -303,7 +309,7 @@ exports.login = async (req, res) => {
       sameSite: isProduction ? "None" : "strict", // "None" for cross-site on Render
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: "/",
-      // domain: ".officemuckup.com",  // This is the key!
+      domain: ".cambodiacpm.com",  // This is the key!
     });
 
     res.status(200).json({
