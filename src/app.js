@@ -33,7 +33,8 @@ app.use(
       if (!origin) return callback(null, true);
 
       const allowedOrigins = [
-        "https://daily-report-frontend.officemuckup.com",
+        "https://a.cambodiacpm.com",
+        "https://api.cambodiacpm.com",
         "http://localhost:8080",
         "http://10.10.20.122:8080", // Added for current development setup
         "http://localhost:3000", // In case frontend runs on different port
