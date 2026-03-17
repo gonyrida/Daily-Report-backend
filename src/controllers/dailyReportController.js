@@ -2,6 +2,7 @@ const dailyReportService = require("../services/dailyReportService");
 const notificationService = require("../services/notificationService");
 const DailyReport = require('../models/dailyReportModel');
 const { CAMBODIA_LOCATIONS } = require('../data/cambodiaLocations');
+const dailyReportImageService = require('../services/dailyReportImageService');
 
 // Get all reports for authenticated user
 const getDailyReports = async (req, res) => {

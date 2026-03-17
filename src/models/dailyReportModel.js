@@ -1,5 +1,23 @@
 const mongoose = require("mongoose");
 
+// Image metadata schema for Supabase storage
+const ImageMetadataSchema = new mongoose.Schema({
+  supabaseUrl: { type: String, default: "" },
+  supabasePath: { type: String, default: "" },
+  fileName: { type: String, default: "" },
+  fileSize: { type: Number, default: 0 },
+  fileType: { type: String, default: "" },
+  caption: { type: String, default: "" },
+  // Legacy support for Base64 strings (will be removed after migration)
+  legacyBase64: { type: String, default: "" }
+}, { _id: false });
+
+// Use Mixed type for backward compatibility
+const ImageArraySchema = {
+  type: mongoose.Schema.Types.Mixed,
+  default: []
+};
+
 const ResourceSchema = new mongoose.Schema(
   {
     description: { type: String, default: "" },
@@ -119,7 +137,7 @@ const dailyReportSchema = new mongoose.Schema(
 
     hse: [{
       section_title: { type: String, default: "" },
-      images: [{ type: String }],
+      images: ImageArraySchema,
       footers: [{ type: String }]
     }],
 
@@ -130,7 +148,7 @@ const dailyReportSchema = new mongoose.Schema(
 
     site_ref: [{
       section_title: { type: String, default: "" },
-      images: [{ type: String }],
+      images: ImageArraySchema,
       footers: [{ type: String }]
     }],
 
@@ -186,7 +204,7 @@ const dailyReportSchema = new mongoose.Schema(
     },
 
     photo_groups: [{
-      images: [{ type: String }],
+      images: ImageArraySchema,
       date: { type: String },
       footers: [{ type: String }]
     }],
@@ -205,13 +223,17 @@ const dailyReportSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {
         description: "",
-        photo_groups: []
+        photo_groups: [{
+          images: ImageArraySchema,
+          date: String,
+          footers: [String]
+        }]
       },
     },
 
     projectLogo: {
-      type: String,  // Store base64 or URL
-      default: "",
+      type: mongoose.Schema.Types.Mixed,
+      default: ""
     },
 
     status: {
@@ -228,6 +250,13 @@ const dailyReportSchema = new mongoose.Schema(
     lastUpdated: {
       type: Date,
       default: Date.now,
+    },
+
+    // Version for optimistic locking (concurrent edit protection)
+    version: {
+      type: Number,
+      default: 0,
+      min: 0
     },
   },
   {
