@@ -2,6 +2,7 @@ const dailyReportService = require("../services/dailyReportService");
 const notificationService = require("../services/notificationService");
 const DailyReport = require('../models/dailyReportModel');
 const { CAMBODIA_LOCATIONS } = require('../data/cambodiaLocations');
+const dailyReportImageService = require('../services/dailyReportImageService');
 
 // Get all reports for authenticated user
 const getDailyReports = async (req, res) => {
@@ -211,11 +212,7 @@ const upsertDailyReport = async (req, res) => {
 // Save or update report (kept for backward compatibility)
 const saveOrUpdateReport = async (req, res) => {
   try {
-    console.log("DEBUG BACKEND CONTROLLER: Save request received");
-    console.log('🔧 DEBUG: req.user:', req.user);
-    console.log('🔧 DEBUG: req.user.companyId:', req.user.companyId);
     const reportData = req.body;
-    console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
     if (!reportData.reportDate)
       return res.status(400).json({ 
         success: false,

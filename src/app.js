@@ -7,6 +7,7 @@ const dailyReportRoutes = require("./routes/dailyReportRoutes");
 const weeklyReportRoutes = require("./routes/weeklyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
+const dailyReportImageRoutes = require("./routes/dailyReportImageRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
@@ -93,6 +94,7 @@ app.use(
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/refresh-token", authLimiter, require("./routes/refreshTokenRoutes"));
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
+app.use("/api/daily-reports-images", authenticateToken, dailyReportImageRoutes);
 app.use("/api/weekly-reports", authenticateToken, weeklyReportRoutes);
 app.use("/api/projects", authenticateToken, projectRoutes);
 app.use("/api/images", authenticateToken, imageRoutes);
