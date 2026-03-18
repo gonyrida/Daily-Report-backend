@@ -102,6 +102,12 @@ app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 
+// og:image
+app.get("/api/og-image", (req, res) => {
+  const filePath = path.join(__dirname, "../uploads/og_image.png");
+  res.sendFile(filePath);
+});
+
 // Health check route
 app.get("/health", async (req, res) => {
   const startTime = Date.now();
