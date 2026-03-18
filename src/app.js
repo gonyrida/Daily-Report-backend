@@ -103,8 +103,8 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 
 // og:image
-app.get("/api/og-image", (req, res) => {
-  const filePath = path.join(__dirname, "../uploads/og_image.png");
+app.get("/api/og-image", (_req, res) => {
+  const filePath = path.join(__dirname, "../public/og_image.png");
   res.sendFile(filePath);
 });
 
