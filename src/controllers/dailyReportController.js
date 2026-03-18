@@ -212,11 +212,7 @@ const upsertDailyReport = async (req, res) => {
 // Save or update report (kept for backward compatibility)
 const saveOrUpdateReport = async (req, res) => {
   try {
-    console.log("DEBUG BACKEND CONTROLLER: Save request received");
-    console.log('🔧 DEBUG: req.user:', req.user);
-    console.log('🔧 DEBUG: req.user.companyId:', req.user.companyId);
     const reportData = req.body;
-    console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
     if (!reportData.reportDate)
       return res.status(400).json({ 
         success: false,

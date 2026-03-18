@@ -7,9 +7,7 @@ const ImageMetadataSchema = new mongoose.Schema({
   fileName: { type: String, default: "" },
   fileSize: { type: Number, default: 0 },
   fileType: { type: String, default: "" },
-  caption: { type: String, default: "" },
-  // Legacy support for Base64 strings (will be removed after migration)
-  legacyBase64: { type: String, default: "" }
+  caption: { type: String, default: "" }
 }, { _id: false });
 
 // Use Mixed type for backward compatibility

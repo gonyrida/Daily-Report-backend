@@ -13,7 +13,6 @@ const uploadReportImages = async (req, res) => {
     const { imageType, imageData } = req.body;
     const userId = req.user.userId;
 
-    console.log(`DEBUG: Upload request - Report: ${reportId}, Type: ${imageType}, User: ${userId}`);
 
     if (!imageData || !Array.isArray(imageData)) {
       return res.status(400).json({ error: 'Invalid image data format' });
@@ -37,7 +36,6 @@ const uploadReportImages = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('DEBUG: Error in uploadReportImages:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -50,7 +48,6 @@ const moveTempFiles = async (req, res) => {
     const { tempReportId, finalReportId } = req.body;
     const userId = req.user.userId;
 
-    console.log(`DEBUG: Move temp files - Temp: ${tempReportId}, Final: ${finalReportId}, User: ${userId}`);
 
     const result = await dailyReportImageService.moveTempFilesOnSave(
       tempReportId, finalReportId, userId
@@ -69,7 +66,6 @@ const moveTempFiles = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('DEBUG: Error in moveTempFiles:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -82,7 +78,6 @@ const cleanupImages = async (req, res) => {
     const { reportId } = req.params;
     const { currentImages, newImages } = req.body;
 
-    console.log(`DEBUG: Cleanup images - Report: ${reportId}`);
 
     const result = await dailyReportImageService.cleanupUnusedImages(
       currentImages, newImages
@@ -102,7 +97,6 @@ const cleanupImages = async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('DEBUG: Error in cleanupImages:', error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -133,7 +127,6 @@ const getReportImages = async (req, res) => {
       images
     });
   } catch (error) {
-    console.error('DEBUG: Error in getReportImages:', error);
     res.status(500).json({ error: error.message });
   }
 };

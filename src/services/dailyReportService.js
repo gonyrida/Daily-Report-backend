@@ -7,22 +7,18 @@ const User = require("../models/userModel.js");
  */
 const getImagesFromSupabase = async (userId) => {
   try {
-    console.log("DEBUG: Getting images from Supabase for HSE");
     
     // List all images in the hse-images folder for this user
     const { data, error } = await listFilesInSupabase(`temp-uploads/${userId}/hse-images/`);
     
     if (error) {
-      console.error("ERROR: Failed to list Supabase files:", error);
       return [];
     }
     
     if (!data || data.length === 0) {
-      console.log("DEBUG: No images found in Supabase for this user");
       return [];
     }
     
-    console.log(`DEBUG: Found ${data.length} images in Supabase`);
     
     // Get public URLs for all images
     const hseImages = await Promise.all(
@@ -41,11 +37,9 @@ const getImagesFromSupabase = async (userId) => {
       })
     );
     
-    console.log(`DEBUG: Processed ${hseImages.length} images from Supabase`);
     return hseImages;
     
   } catch (error) {
-    console.error("ERROR: Failed to get images from Supabase:", error);
     return [];
   }
 };
@@ -55,13 +49,11 @@ const getImagesFromSupabase = async (userId) => {
  */
 const addSupabaseImagesToHSE = async (reportId, userId) => {
   try {
-    console.log("DEBUG: Adding Supabase images to HSE section");
     
     // Get images from Supabase
     const supabaseImages = await getImagesFromSupabase(userId);
     
     if (supabaseImages.length === 0) {
-      console.log("DEBUG: No images to add to HSE");
       return;
     }
     
@@ -82,11 +74,9 @@ const addSupabaseImagesToHSE = async (reportId, userId) => {
       { new: true }
     );
     
-    console.log(`DEBUG: Added ${supabaseImages.length} images to HSE section`);
     return updatedReport;
     
   } catch (error) {
-    console.error("ERROR: Failed to add Supabase images to HSE:", error);
     throw error;
   }
 };
@@ -95,33 +85,30 @@ const addSupabaseImagesToHSE = async (reportId, userId) => {
  * Process images in report data - upload to Supabase and replace with URLs
  */
 const processReportImages = async (reportData, userId) => {
-  console.log("DEBUG: Processing images for Supabase upload");
   
-  // Transform referenceSections to hse format FIRST for consistent processing
+  // Get userId from parameter or reportData or use a default
+  const effectiveUserId = userId || reportData.userId || 'unknown-user';
+  
   const transformedData = { ...reportData };
   if (reportData.referenceSections && Array.isArray(reportData.referenceSections)) {
-    console.log("DEBUG: Transforming referenceSections to hse format BEFORE processing");
     transformedData.hse = reportData.referenceSections.map(section => ({
       section_title: section.title || "",
       images: section.entries || [],
       footers: []
     }));
-    console.log("DEBUG: Transformed hse data:", transformedData.hse);
+    
+    // Remove referenceSections to reduce document size - they should be uploaded as files
+    if (reportData.referenceSections) {
+      delete transformedData.referenceSections;
+    }
   }
   
-  const imageSections = ['hse', 'site_ref', 'photo_groups'];
+  const imageSections = ['hse', 'site_ref', 'photo_groups', 'referenceSections'];
   const processedData = transformedData;
   
   for (const section of imageSections) {
-    console.log(`DEBUG: Checking section ${section}:`, {
-      exists: !!processedData[section],
-      isArray: Array.isArray(processedData[section]),
-      type: typeof processedData[section],
-      data: processedData[section] ? (Array.isArray(processedData[section]) ? `Array with ${processedData[section].length} items` : 'Not an array') : 'Not defined'
-    });
     
     if (processedData[section] && Array.isArray(processedData[section])) {
-      console.log(`DEBUG: Processing ${section} images:`, processedData[section].length);
       
       const processedSection = await Promise.all(
         processedData[section].map(async (sectionItem, index) => {
@@ -129,99 +116,65 @@ const processReportImages = async (reportData, userId) => {
           const imageArray = sectionItem.images || sectionItem.entries || sectionItem.slots;
           
           if (imageArray && Array.isArray(imageArray)) {
-            console.log(`DEBUG: Found ${imageArray.length} images in ${section}[${index}]`);
             
             const processedImages = await Promise.all(
               imageArray.map(async (image) => {
-                // If image is a Base64 string, upload to Supabase
-                if (typeof image === 'string' && image.startsWith('data:image/')) {
-                  console.log(`DEBUG: Uploading Base64 image to Supabase for ${section}[${index}]`);
-                   
+                // Images must be Supabase objects or File objects - no base64 allowed
+                if (typeof image === 'object' && image.supabaseUrl) {
+                  return image;
+                }
+                // If image is a File object, upload to Supabase
+                else if (image instanceof File || (image.file && image.file instanceof File)) {
+                  
+                  const fileToUpload = image instanceof File ? image : image.file;
+                  const fileName = fileToUpload.name || `image-${Date.now()}.jpg`;
+                  const supabasePath = `temp-uploads/${effectiveUserId}/${section}-images/${fileName}`;
+                  
                   try {
-                    // Convert Base64 to buffer for Supabase upload
-                    const base64Data = image.split(',')[1]; // Remove data:image/jpeg;base64, part
-                    const buffer = Buffer.from(base64Data, 'base64');
-                    const fileName = `image-${Date.now()}.jpg`;
-                    const supabasePath = `temp-uploads/${userId}/${section}-images/${fileName}`;
                     
-                    // Upload to Supabase
-                    const { data, error } = await uploadImageToSupabase(
-                      buffer, 
+                    const uploadResult = await uploadImageToSupabase(
+                      fileToUpload, 
                       supabasePath
                     );
                     
-                    if (error) {
-                      console.error(`ERROR: Failed to upload image to Supabase:`, error);
-                      return { 
-                        legacyBase64: image, // Keep original as fallback
-                        caption: image.caption || 'Image'
-                      };
+                    
+                    if (!uploadResult.success) {
+                      throw new Error(`Supabase upload failed: ${uploadResult.error}`);
                     }
                     
-                    // Get public URL
                     const { publicUrl } = await getPublicUrl(supabasePath);
                     
-                    console.log(`DEBUG: Successfully uploaded to Supabase: ${publicUrl}`);
                     
                     return {
                       supabaseUrl: publicUrl,
                       supabasePath: supabasePath,
                       fileName: fileName,
-                      fileSize: buffer.length,
-                      fileType: 'image/jpeg',
-                      caption: image.caption || 'Image'
+                      fileSize: fileToUpload.size,
+                      fileType: fileToUpload.type,
+                      caption: image.caption || fileName
                     };
                   } catch (error) {
-                    console.error(`ERROR: Failed to upload image to Supabase:`, error);
-                    return { 
-                      legacyBase64: image, // Keep original as fallback
-                      caption: image.caption || 'Image'
-                    };
+                    throw error;
                   }
                 }
-                // If image is an object without Supabase URL, upload directly
-                else if (typeof image === 'object' && !image.supabaseUrl) {
-                  console.log(`DEBUG: Processing object image for ${section}[${index}]:`, typeof image);
+                // If image is an object without Supabase URL but with file data
+                else if (typeof image === 'object' && (image.buffer || image.blob)) {
                   
-                  // Create a file-like object from the image data
                   const fileName = image.fileName || `image-${Date.now()}.jpg`;
-                  const supabasePath = `temp-uploads/${userId}/${section}-images/${fileName}`;
-                  
-                  // Handle different image object structures
-                  let imageData;
-                  if (image.image && typeof image.image === 'string' && image.image.startsWith('data:image/')) {
-                    // Base64 string in object
-                    console.log(`DEBUG: Found Base64 in object image, converting to buffer`);
-                    const base64Data = image.image.split(',')[1];
-                    imageData = Buffer.from(base64Data, 'base64');
-                  } else if (image.buffer) {
-                    // Buffer data in object
-                    console.log(`DEBUG: Found buffer in object image`);
-                    imageData = image.buffer;
-                  } else if (image.blob) {
-                    // Blob data in object
-                    console.log(`DEBUG: Found blob in object image`);
-                    imageData = image.blob;
-                  } else {
-                    console.log(`DEBUG: No image data found in object, using placeholder`);
-                    // Create a placeholder buffer
-                    imageData = Buffer.from('placeholder', 'utf8');
-                  }
+                  const supabasePath = `temp-uploads/${effectiveUserId}/${section}-images/${fileName}`;
+                  const imageData = image.buffer || image.blob;
                   
                   try {
-                    const { data, error } = await uploadImageToSupabase(imageData, supabasePath);
                     
-                    if (error) {
-                      console.error(`ERROR: Failed to upload object image to Supabase:`, error);
-                      return {
-                        ...image,
-                        legacyBase64: image.image || image.buffer || image.blob
-                      };
+                    const uploadResult = await uploadImageToSupabase(imageData, supabasePath);
+                    
+                    
+                    if (!uploadResult.success) {
+                      throw new Error(`Object Supabase upload failed: ${uploadResult.error}`);
                     }
                     
                     const { publicUrl } = await getPublicUrl(supabasePath);
                     
-                    console.log(`DEBUG: Successfully uploaded object image to Supabase: ${publicUrl}`);
                     
                     return {
                       supabaseUrl: publicUrl,
@@ -229,36 +182,24 @@ const processReportImages = async (reportData, userId) => {
                       fileName: fileName,
                       fileSize: imageData.length || 0,
                       fileType: 'image/jpeg',
-                      caption: image.caption || 'Image'
+                      caption: image.caption || fileName
                     };
                   } catch (error) {
-                    console.error(`ERROR: Failed to upload object image to Supabase:`, error);
-                    return {
-                      ...image,
-                      legacyBase64: image.image || image.buffer || image.blob
-                    };
+                    throw error;
                   }
                 }
-                // If image is already a Supabase object, keep it
-                else if (typeof image === 'object' && image.supabaseUrl) {
-                  console.log(`DEBUG: Image already has Supabase URL: ${image.supabaseUrl}`);
-                  return image;
-                }
-                // If image is a string but not Base64, convert to object
+                // If image is a string, treat as URL
                 else if (typeof image === 'string') {
-                  console.log(`DEBUG: Converting string to object: ${image}`);
                   return {
-                    legacyBase64: image,
-                    caption: 'Legacy image'
+                    supabaseUrl: image,
+                    caption: 'Image'
                   };
                 }
-                // Otherwise, return as-is
                 else {
-                  console.log(`DEBUG: Keeping image as-is:`, typeof image, image);
-                  return image;
+                  throw new Error('Invalid image format - base64 not supported');
                 }
-                })
-              );
+              })
+            );
               
               return {
                 ...sectionItem,
@@ -276,7 +217,6 @@ const processReportImages = async (reportData, userId) => {
   
   // Handle carSheet images
   if (reportData.carSheet && reportData.carSheet.photo_groups) {
-    console.log("DEBUG: Processing carSheet images");
     
     const processedCarSheet = { ...reportData.carSheet };
     processedCarSheet.photo_groups = await Promise.all(
@@ -284,58 +224,51 @@ const processReportImages = async (reportData, userId) => {
         if (photoGroup.images && Array.isArray(photoGroup.images)) {
           const processedImages = await Promise.all(
             photoGroup.images.map(async (image) => {
-              // Same logic as above for carSheet images
-              if (typeof image === 'string' && image.startsWith('data:image/')) {
-                console.log(`DEBUG: Uploading carSheet Base64 image to Supabase`);
+              // Images must be File objects or Supabase objects - no base64 allowed
+              if (typeof image === 'object' && image.supabaseUrl) {
+                return image;
+              }
+              else if (image instanceof File || (image.file && image.file instanceof File)) {
+                
+                const fileToUpload = image instanceof File ? image : image.file;
+                const fileName = fileToUpload.name || `car-image-${Date.now()}.jpg`;
+                const supabasePath = `temp-uploads/${effectiveUserId}/car-images/${fileName}`;
                 
                 try {
-                  const base64Data = image.split(',')[1];
-                  const buffer = Buffer.from(base64Data, 'base64');
-                  const fileName = `car-image-${Date.now()}.jpg`;
-                  const supabasePath = `temp-uploads/${userId}/car-images/${fileName}`;
                   
-                  const { data, error } = await uploadImageToSupabase(
-                    buffer, 
+                  const uploadResult = await uploadImageToSupabase(
+                    fileToUpload, 
                     supabasePath
                   );
                   
-                  if (error) {
-                    return { 
-                      legacyBase64: image,
-                      caption: image.caption || 'Car image'
-                    };
+                  
+                  if (!uploadResult.success) {
+                    throw new Error(`CarSheet Supabase upload failed: ${uploadResult.error}`);
                   }
                   
                   const { publicUrl } = await getPublicUrl(supabasePath);
+                  
                   
                   return {
                     supabaseUrl: publicUrl,
                     supabasePath: supabasePath,
                     fileName: fileName,
-                    fileSize: buffer.length,
-                    fileType: 'image/jpeg',
-                    caption: image.caption || 'Car image'
+                    fileSize: fileToUpload.size,
+                    fileType: fileToUpload.type,
+                    caption: image.caption || fileName
                   };
                 } catch (error) {
-                  console.error(`ERROR: Failed to upload carSheet image to Supabase:`, error);
-                  return { 
-                    legacyBase64: image,
-                    caption: image.caption || 'Car image'
-                  };
+                  throw error;
                 }
-              }
-              // If image is already a Supabase object, keep it
-              else if (typeof image === 'object' && image.supabaseUrl) {
-                return image;
               }
               else if (typeof image === 'string') {
                 return {
-                  legacyBase64: image,
-                  caption: 'Legacy car image'
+                  supabaseUrl: image, 
+                  caption: 'Car image'
                 };
               }
               else {
-                return image;
+                throw new Error('Invalid carSheet image format - base64 not supported');
               }
               })
           );
@@ -353,56 +286,54 @@ const processReportImages = async (reportData, userId) => {
     processedData.carSheet = processedCarSheet;
   }
   
-  // Handle projectLogo
+  // Handle projectLogo - must be File object or Supabase object
   if (reportData.projectLogo) {
-    console.log("DEBUG: Processing projectLogo");
     
-    if (typeof reportData.projectLogo === 'string' && reportData.projectLogo.startsWith('data:image/')) {
-      console.log(`DEBUG: Uploading projectLogo Base64 to Supabase`);
+    if (typeof reportData.projectLogo === 'object' && reportData.projectLogo.supabaseUrl) {
+      // Keep as-is
+    }
+    else if (reportData.projectLogo instanceof File || (reportData.projectLogo.file && reportData.projectLogo.file instanceof File)) {
+      
+      const fileToUpload = reportData.projectLogo instanceof File ? reportData.projectLogo : reportData.projectLogo.file;
+      const fileName = fileToUpload.name || `project-logo-${Date.now()}.jpg`;
+      const supabasePath = `temp-uploads/${effectiveUserId}/logos/${fileName}`;
       
       try {
-        const base64Data = reportData.projectLogo.split(',')[1];
-        const buffer = Buffer.from(base64Data, 'base64');
-        const fileName = `project-logo-${Date.now()}.jpg`;
-        const supabasePath = `temp-uploads/${userId}/logos/${fileName}`;
         
-        const { data, error } = await uploadImageToSupabase(
-          buffer, 
+        const uploadResult = await uploadImageToSupabase(
+          fileToUpload, 
           supabasePath
         );
         
-        if (error) {
-          processedData.projectLogo = { 
-            legacyBase64: reportData.projectLogo
-          };
-        } else {
-          const { publicUrl } = await getPublicUrl(supabasePath);
-          
-          processedData.projectLogo = {
-            supabaseUrl: publicUrl,
-            supabasePath: supabasePath,
-            fileName: fileName,
-            fileSize: buffer.length,
-            fileType: 'image/jpeg'
-          };
+        
+        if (!uploadResult.success) {
+          throw new Error(`ProjectLogo Supabase upload failed: ${uploadResult.error}`);
         }
+        
+        const { publicUrl } = await getPublicUrl(supabasePath);
+        
+        
+        processedData.projectLogo = {
+          supabaseUrl: publicUrl,
+          supabasePath: supabasePath,
+          fileName: fileName,
+          fileSize: fileToUpload.size,
+          fileType: fileToUpload.type
+        };
       } catch (error) {
         console.error("ERROR: Failed to upload projectLogo:", error);
-        processedData.projectLogo = { 
-          legacyBase64: reportData.projectLogo
-        };
+        throw error;
       }
-    } else if (typeof reportData.projectLogo === 'object' && reportData.projectLogo.supabaseUrl) {
-      console.log(`DEBUG: projectLogo already has Supabase URL`);
-      // Keep as-is
-    } else {
-      console.log(`DEBUG: Keeping projectLogo as-is:`, typeof reportData.projectLogo);
-      // Keep as-is
+    }
+    else if (typeof reportData.projectLogo === 'string') {
+      // Keep as URL string
+    }
+    else {
+      throw new Error('Invalid projectLogo format - base64 not supported');
     }
   }
   
     
-  console.log("DEBUG: Image processing complete");
   return processedData;
 };
 
@@ -590,27 +521,19 @@ const getReportByDateOnly = async (reportDate) => {
  * If report doesn't exist: insert as new record
  */
 const upsertDailyReport = async (userId, reportData, companyId) => {
-  console.log("DEBUG BACKEND SERVICE: saveOrUpdateReport called with:", {
-    userId,
-    projectName: reportData.projectName,
-    reportDate: reportData.reportDate,
-    location: reportData.location, // 🔍 DEBUG: Check if location is received
-    allFields: Object.keys(reportData), // 🔍 DEBUG: Show all received fields
-    // 🔍 NEW: Specific activities debugging
-    hasActivities: 'activities' in reportData,
-    activitiesData: reportData.activities,
-    weeklyActivitiesCount: reportData.activities?.weeklyActivities?.length || 0,
-    nextWeekPlanCount: reportData.activities?.nextWeekPlan?.length || 0
-  });
-
   // 🚀 NEW: Process images through Supabase first!
-  console.log("DEBUG: Processing images before saving to database");
   let processedReportData;
   try {
     processedReportData = await processReportImages(reportData, userId);
-    console.log("DEBUG: Image processing complete, saving processed data");
+    
+    // Check if any invalid data exists in processed data
+    const hasInvalidData = JSON.stringify(processedReportData).includes('data:image/');
+    const hasSupabaseUrl = JSON.stringify(processedReportData).includes('supabaseUrl');
+    
+    if (hasInvalidData) {
+      throw new Error('Base64 data detected - base64 is not supported');
+    }
   } catch (error) {
-    console.error("ERROR: Failed to process images:", error);
     // If image processing fails, use original data
     processedReportData = reportData;
   }
@@ -633,13 +556,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     const endOfDay = new Date(inputDate);
     endOfDay.setUTCHours(23, 59, 59, 999);
 
-    console.log("DEBUG BACKEND SERVICE: Searching for existing report:", {
-      userId,
-      projectName,
-      location: reportData.location,
-      startOfDay: startOfDay.toISOString(),
-      endOfDay: endOfDay.toISOString(),
-    });
 
     // Find existing report for this user, project, date, AND location
     const query = {
@@ -655,10 +571,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     
     let report = await DailyReport.findOne(query).session(session);
 
-    console.log(
-      "DEBUG BACKEND SERVICE: Existing report found:",
-      report ? "YES" : "NO"
-    );
 
     // 🔥 FIX #1: Get the previous report with projectName AND location filter
     const previousReportQuery = {
@@ -676,11 +588,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       .sort({ reportDate: -1 })
       .session(session);
 
-    console.log("DEBUG BACKEND SERVICE: Previous report found:", {
-      found: previousReport ? "YES" : "NO",
-      previousDate: previousReport?.reportDate?.toISOString(),
-      previousProjectName: previousReport?.projectName
-    });
 
     // 🔥 FIX #3: Enhanced rolling totals with validation
     const calculateRollingTotals = (newItems, previousItems = []) => {
@@ -697,12 +604,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         const accumulated = userPrev + today;  // ← USER'S prev + today
         
         // Validation logging
-        console.log(`DEBUG: Rolling total for "${item.description}":`, {
-          prev: userPrev,
-          today: today,
-          accumulated: accumulated,
-          foundPrevious: !!prevItem
-        });
         
         return {
           ...item,
@@ -735,19 +636,16 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     };
 
     // Calculate rolling totals for all resource arrays
-    console.log("DEBUG: Calculating rolling totals for managementTeam...");
     const managementTeam = calculateRollingTotals(
       reportData.managementTeam || [],
       previousReport?.managementTeam || []
     );
 
-    console.log("DEBUG: Calculating rolling totals for workingTeamInterior...");
     const workingTeamInterior = calculateRollingTotals(
       reportData.workingTeamInterior || [],
       previousReport?.workingTeamInterior || []
     );
 
-    console.log("DEBUG: Calculating rolling totals for workingTeamMEP...");
     const workingTeamMEP = calculateRollingTotals(
       reportData.workingTeamMEP || [],
       previousReport?.workingTeamMEP || []
@@ -759,7 +657,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       previousReport?.workingTeam || []
     );
 
-    console.log("DEBUG: Calculating rolling totals for materials...");
     const materials = calculateRollingTotals(
       reportData.materials || [],
       previousReport?.materials || []
@@ -771,15 +668,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       nextWeekPlan: []
     };
     
-    console.log("DEBUG: Processing activities data:", {
-      weeklyActivitiesCount: activities.weeklyActivities?.length || 0,
-      nextWeekPlanCount: activities.nextWeekPlan?.length || 0,
-      weeklyActivities: activities.weeklyActivities,
-      nextWeekPlan: activities.nextWeekPlan,
-      source: "upsertDailyReport function"
-    });
 
-    console.log("DEBUG: Calculating rolling totals for machinery...");
     const machinery = calculateRollingTotals(
       reportData.machinery || [],
       previousReport?.machinery || []
@@ -787,10 +676,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
 
     if (report) {
       // Update existing report
-      console.log(
-        "DEBUG BACKEND SERVICE: Updating existing report:",
-        report._id
-      );
       
       // Update text fields with strategy using processed data
       report.location = updateTextField(report.location, processedReportData.location, 'replace');
@@ -815,18 +700,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       report.carSheet = processedReportData.carSheet; // Use processed carSheet
       report.projectLogo = processedReportData.projectLogo; // Use processed projectLogo
       
-      console.log("🔍 DEBUG: Report before save:", {
-        location: report.location,
-        hasLocation: 'location' in report,
-        locationType: typeof report.location
-      });
-      console.log("DEBUG: About to save report with activities:", report.activities);
       await report.save({ session });
-      console.log("DEBUG: Report saved successfully with activities:", report.activities);
-      console.log("DEBUG BACKEND SERVICE: Report updated successfully");
     } else {
       // Create new report
-      console.log("DEBUG BACKEND SERVICE: Creating new report");
       
       const newReportData = {
         userId,
@@ -840,32 +716,12 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         materials,
         machinery,
         activities, // NEW: Add activities field
-        reportDate: inputDate,
         status: "draft",
         lastUpdated: new Date(),
       };
       
-      console.log("🔍 DEBUG: newReportData before save:", {
-        location: newReportData.location,
-        hasLocation: 'location' in newReportData,
-        locationType: typeof newReportData.location,
-        allKeys: Object.keys(newReportData)
-      });
-      console.log("🚀 DEBUG: Processed images data includes:", {
-        hasHse: !!(newReportData.hse && Array.isArray(newReportData.hse)),
-        hasSiteRef: !!(newReportData.site_ref && Array.isArray(newReportData.site_ref)),
-        hasPhotoGroups: !!(newReportData.photo_groups && Array.isArray(newReportData.photo_groups)),
-        hasCarSheet: !!(newReportData.carSheet && newReportData.carSheet.photo_groups),
-        hasProjectLogo: !!newReportData.projectLogo
-      });
-      
       report = new DailyReport(newReportData);
-      console.log("DEBUG: About to create new report with activities:", report.activities);
-      await report.save({ session });
-      console.log("DEBUG: New report created successfully with activities:", report.activities);
-      console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
       
-      // 🚀 NEW: Update project statistics for new reports
       try {
         const Project = require('../models/projectModel');
         await Project.findOneAndUpdate(
@@ -882,9 +738,8 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
             upsert: false
           }
         );
-        console.log("DEBUG BACKEND SERVICE: Project stats updated for:", reportData.projectName);
       } catch (projectError) {
-        console.error("DEBUG BACKEND SERVICE: Failed to update project stats:", projectError);
+        // Don't fail report creation if project update fails
       }
     }
 
@@ -905,18 +760,12 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       .session(session);
 
     if (futureReports.length > 0) {
-      console.log(`DEBUG: Recalculating ${futureReports.length} future reports...`);
       await recalculateFutureReports(userId, projectName, futureReports, session);
     }
 
     await session.commitTransaction();
-    console.log("DEBUG BACKEND SERVICE: Transaction committed successfully");
     return report;
   } catch (error) {
-    console.error(
-      "DEBUG BACKEND SERVICE: Transaction failed, aborting:",
-      error
-    );
     await session.abortTransaction();
     throw error;
   } finally {
@@ -929,13 +778,6 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
  * Marks the report as 'submitted' and validates required fields
  */
 const submitDailyReport = async (userId, projectName, reportDate) => {
-  // DEBUG 4: What is Mongoose actually about to save?
-  console.log("DEBUG BACKEND SERVICE: Submitting report ->", {
-    userId,
-    projectName,
-    reportDate: reportDate.toISOString(),
-  });
-
   try {
     // First, find the existing report to validate it
     const existingReport = await DailyReport.findOne({
@@ -959,10 +801,8 @@ const submitDailyReport = async (userId, projectName, reportDate) => {
     
     await existingReport.save();
     
-    console.log("DEBUG BACKEND SERVICE: Report submitted successfully:", existingReport._id);
     return existingReport;
   } catch (error) {
-    console.error("DEBUG BACKEND SERVICE: Error submitting report:", error);
     throw error;
   }
 };
@@ -973,11 +813,6 @@ const submitDailyReport = async (userId, projectName, reportDate) => {
  */
 const createNewReport = async (userId, projectName, reportDate, companyId) => {
   try {
-    console.log("DEBUG BACKEND SERVICE: Creating new report for:", {
-      userId,
-      projectName,
-      reportDate,
-    });
 
     // Get user's full name for createdBy field
     const user = await User.findById(userId);
@@ -988,11 +823,19 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
 
     // No longer checking for existing reports - allow multiple reports per date/project
     // Create new report with default values
+    let processedReportData;
+    try {
+      processedReportData = await processReportImages(reportData, userId);
+    } catch (error) {
+      processedReportData = reportData; // Use original if processing fails
+    }
+    
     const report = new DailyReport({
       userId,
       companyId,
       createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
       projectName: projectName || "Default Project",
+      ...processedReportData, // Use processed data with Supabase URLs
       reportDate,
       status: "draft",
       // Weather fields
@@ -1041,16 +884,13 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
           upsert: false  // Don't create if project doesn't exist
         }
       );
-      console.log("DEBUG BACKEND SERVICE: Project stats updated for:", projectName);
     } catch (projectError) {
       console.error("DEBUG BACKEND SERVICE: Failed to update project stats:", projectError);
       // Don't fail the report creation if project update fails
     }
     
-    console.log("DEBUG BACKEND SERVICE: New report created with ID:", report._id);
     return report;
   } catch (error) {
-    console.error("DEBUG BACKEND SERVICE: Error creating new report:", error);
     throw error;
   }
 };
@@ -1061,7 +901,6 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
  */
 const autoSaveReport = async (userId, reportId, partialData) => {
   try {
-    console.log("DEBUG BACKEND SERVICE: Auto-saving report:", { userId, reportId });
     
     const session = await DailyReport.startSession();
     session.startTransaction();
@@ -1136,16 +975,25 @@ const getRecentReports = async (userId, limit = 20, statusFilter = null) => {
  */
 const createBlankReport = async (userId, projectName = null) => {
   try {
-    console.log("DEBUG BACKEND SERVICE: Creating blank report for:", { userId, projectName });
 
     // Get user's full name for createdBy field
     const user = await User.findById(userId);
     const userFullName = user ? `${user.firstName} ${user.lastName}` : "";
 
+    // Process images if any (though blank report shouldn't have images)
+    let processedReportData = {};
+    try {
+      processedReportData = await processReportImages({ userId, projectName, reportDate: new Date() }, userId);
+    } catch (error) {
+      // For blank report, use minimal data if processing fails
+      processedReportData = { userId, projectName, reportDate: new Date() };
+    }
+
     const report = new DailyReport({
       userId,
       createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
       projectName: projectName || "Untitled Report",
+      ...processedReportData, // Use processed data with Supabase URLs
       reportDate: new Date(),
       status: "draft",
       // Minimal default data
@@ -1324,4 +1172,5 @@ module.exports = {
   getReportsByLocation,
   getImagesFromSupabase,
   addSupabaseImagesToHSE,
+  processReportImages,
 };

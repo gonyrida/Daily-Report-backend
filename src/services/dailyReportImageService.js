@@ -14,7 +14,6 @@ const { uploadImageToSupabase, moveFileInSupabase, deleteFileFromSupabase } = re
  */
 const processImageUploads = async (reportId, userId, imageData, imageType) => {
   try {
-    console.log(`DEBUG: Processing ${imageType} image uploads for report ${reportId}`);
     
     const uploadedImages = [];
     const errors = [];
@@ -46,10 +45,8 @@ const processImageUploads = async (reportId, userId, imageData, imageType) => {
               caption: imageItem.caption || imageItem.file.name,
               isTemp: reportId?.startsWith('temp-')
             });
-            console.log(`DEBUG: Successfully uploaded ${imageItem.file.name}`);
           } else {
             errors.push({ file: imageItem.file.name, error: result.error });
-            console.error(`DEBUG: Failed to upload ${imageItem.file.name}:`, result.error);
           }
         } else if (imageItem.supabaseUrl) {
           // Existing Supabase image
@@ -61,22 +58,14 @@ const processImageUploads = async (reportId, userId, imageData, imageType) => {
             fileType: imageItem.fileType,
             caption: imageItem.caption
           });
-        } else if (imageItem.legacyBase64) {
-          // Legacy Base64 - keep as is for now
-          uploadedImages.push({
-            legacyBase64: imageItem.legacyBase64,
-            caption: imageItem.caption || 'Legacy image'
-          });
         } else {
-          errors.push({ file: 'unknown', error: 'Invalid image data format' });
+          errors.push({ file: 'unknown', error: 'Invalid image data format - must have supabaseUrl or file' });
         }
       } catch (error) {
         errors.push({ file: imageItem.file?.name || 'unknown', error: error.message });
-        console.error(`DEBUG: Error processing image:`, error);
       }
     }
     
-    console.log(`DEBUG: Image processing complete. Success: ${uploadedImages.length}, Errors: ${errors.length}`);
     
     return {
       success: errors.length === 0,
@@ -86,7 +75,6 @@ const processImageUploads = async (reportId, userId, imageData, imageType) => {
     };
     
   } catch (error) {
-    console.error('DEBUG: Error in processImageUploads:', error);
     return {
       success: false,
       images: [],
@@ -105,10 +93,8 @@ const processImageUploads = async (reportId, userId, imageData, imageType) => {
  */
 const moveTempFilesOnSave = async (tempReportId, finalReportId, userId) => {
   try {
-    console.log(`DEBUG: Moving temp files from ${tempReportId} to ${finalReportId}`);
     
     if (!tempReportId.startsWith('temp-')) {
-      console.log('DEBUG: Not a temp report, no files to move');
       return { success: true, movedFiles: [] };
     }
     
@@ -149,8 +135,7 @@ const moveTempFilesOnSave = async (tempReportId, finalReportId, userId) => {
               fileName: file.name,
               imageType
             });
-            console.log(`DEBUG: Moved ${file.name} from ${oldPath} to ${newPath}`);
-          } else {
+                  } else {
             errors.push({ file: file.name, error: 'Move failed' });
           }
         }
@@ -182,26 +167,27 @@ const moveTempFilesOnSave = async (tempReportId, finalReportId, userId) => {
  */
 const updateReportSupabasePaths = async (reportId, movedFiles) => {
   try {
-    console.log(`DEBUG: Updating Supabase paths for report ${reportId}`);
     
     const report = await DailyReport.findById(reportId);
     if (!report) {
-      console.error('DEBUG: Report not found for path update');
       return;
     }
     
     let updated = false;
     
     // Update project logo if it was moved
-    if (report.projectLogo && report.projectLogo.legacyBase64) {
-      const movedLogo = movedFiles.find(f => f.dest && f.dest.includes('logo'));
+    if (report.projectLogo && report.projectLogo.supabasePath) {
+      const movedLogo = movedFiles.find(f => f.newPath && f.newPath.includes('logo'));
       if (movedLogo) {
+        const { getPublicUrl } = require('../integrations/supabase/server');
+        const { publicUrl } = await getPublicUrl(movedLogo.newPath);
+        
         report.projectLogo = {
-          supabaseUrl: movedLogo.uploadData.publicUrl,
-          supabasePath: movedLogo.dest,
-          fileName: movedLogo.originalFile.name,
-          fileSize: movedLogo.originalFile.size,
-          fileType: movedLogo.originalFile.type
+          supabaseUrl: publicUrl,
+          supabasePath: movedLogo.newPath,
+          fileName: movedLogo.fileName,
+          fileSize: 0, // We don't have size info after move
+          fileType: 'image/jpeg'
         };
         updated = true;
       }
@@ -210,64 +196,68 @@ const updateReportSupabasePaths = async (reportId, movedFiles) => {
     // Update image arrays
     const imageArrays = ['hse', 'site_ref', 'photo_groups'];
     
-    imageArrays.forEach(arrayName => {
+    for (const arrayName of imageArrays) {
       if (report[arrayName]) {
-        report[arrayName].forEach(section => {
+        for (const section of report[arrayName]) {
           if (section.images) {
-            section.images.forEach((image, index) => {
-              if (image.legacyBase64) {
-                const movedImage = movedFiles.find(f => 
-                  f.dest && f.dest.includes(arrayName.replace('_', '-'))
-                );
-                if (movedImage) {
-                  section.images[index] = {
-                    supabaseUrl: movedImage.uploadData.publicUrl,
-                    supabasePath: movedImage.dest,
-                    fileName: movedImage.originalFile.name,
-                    fileSize: movedImage.originalFile.size,
-                    fileType: movedImage.originalFile.type,
-                    caption: image.caption
-                  };
-                  updated = true;
-                }
-              }
-            });
-          }
-        });
-      }
-    });
-    
-    // Update CAR sheet images
-    if (report.carSheet && report.carSheet.photo_groups) {
-      report.carSheet.photo_groups.forEach(group => {
-        if (group.images) {
-          group.images.forEach((image, index) => {
-            if (image.legacyBase64) {
-              const movedImage = movedFiles.find(f => f.dest && f.dest.includes('car'));
+            for (let index = 0; index < section.images.length; index++) {
+              const image = section.images[index];
+              const movedImage = movedFiles.find(f => 
+                f.newPath && f.newPath.includes(arrayName.replace('_', '-'))
+              );
               if (movedImage) {
-                group.images[index] = {
-                  supabaseUrl: movedImage.uploadData.publicUrl,
-                  supabasePath: movedImage.dest,
-                  fileName: movedImage.originalFile.name,
-                  fileSize: movedImage.originalFile.size,
-                  fileType: movedImage.originalFile.type,
+                const { getPublicUrl } = require('../integrations/supabase/server');
+                const { publicUrl } = await getPublicUrl(movedImage.newPath);
+                
+                section.images[index] = {
+                  supabaseUrl: publicUrl,
+                  supabasePath: movedImage.newPath,
+                  fileName: movedImage.fileName,
+                  fileSize: 0, // We don't have size info after move
+                  fileType: 'image/jpeg',
                   caption: image.caption
                 };
                 updated = true;
               }
             }
-          });
+          }
         }
-      });
+      }
+    }
+    
+    // Update CAR sheet images
+    if (report.carSheet && report.carSheet.photo_groups) {
+      for (const group of report.carSheet.photo_groups) {
+        if (group.images) {
+          for (let index = 0; index < group.images.length; index++) {
+            const image = group.images[index];
+            if (image.supabasePath) {
+              const movedImage = movedFiles.find(f => f.newPath && f.newPath.includes('car'));
+              if (movedImage) {
+                const { getPublicUrl } = require('../integrations/supabase/server');
+                const { publicUrl } = await getPublicUrl(movedImage.newPath);
+                
+                group.images[index] = {
+                  supabaseUrl: publicUrl,
+                  supabasePath: movedImage.newPath,
+                  fileName: movedImage.fileName,
+                  fileSize: 0, // We don't have size info after move
+                  fileType: 'image/jpeg',
+                  caption: image.caption
+                };
+                updated = true;
+              }
+            }
+          }
+        }
+      }
     }
     
     if (updated) {
       await report.save();
-      console.log('DEBUG: Report Supabase paths updated successfully');
     }
     
   } catch (error) {
-    console.error('DEBUG: Error updating Supabase paths:', error);
   }
 };
 
@@ -279,17 +269,14 @@ const updateReportSupabasePaths = async (reportId, movedFiles) => {
  */
 const cleanupUnusedImages = async (currentImages, newImages) => {
   try {
-    console.log(`DEBUG: Cleaning up unused images. Current: ${currentImages.length}, New: ${newImages.length}`);
     
     // Find images to delete (in current but not in new)
     const imagesToDelete = currentImages.filter(current => 
       !newImages.find(newItem => 
-        newItem.supabasePath === current.supabasePath || 
-        newItem.legacyBase64 === current.legacyBase64
+        newItem.supabasePath === current.supabasePath
       )
     );
     
-    console.log(`DEBUG: Found ${imagesToDelete.length} images to delete`);
     
     const deletePromises = imagesToDelete
       .filter(img => img.supabasePath)
@@ -300,7 +287,6 @@ const cleanupUnusedImages = async (currentImages, newImages) => {
     const successful = results.filter(r => r.status === 'fulfilled').length;
     const failed = results.filter(r => r.status === 'rejected').length;
     
-    console.log(`DEBUG: Image cleanup complete. Success: ${successful}, Failed: ${failed}`);
     
     return {
       success: failed === 0,
@@ -312,7 +298,6 @@ const cleanupUnusedImages = async (currentImages, newImages) => {
     };
     
   } catch (error) {
-    console.error('DEBUG: Error in cleanupUnusedImages:', error);
     return {
       success: false,
       deletedCount: 0,
