@@ -681,6 +681,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       report.location = updateTextField(report.location, processedReportData.location, 'replace');
       report.description = updateTextField(report.description, processedReportData.description, 'replace');
       report.workPlanNextDay = updateTextField(report.workPlanNextDay, processedReportData.workPlanNextDay, 'replace');
+      report.activityToday = updateTextField(report.activityToday, processedReportData.activityToday, 'replace');
       report.workPlanNextWeek = updateTextField(report.workPlanNextWeek, processedReportData.workPlanNextWeek, 'replace');
       report.challenges = updateTextField(report.challenges, processedReportData.challenges, 'replace');
       report.lessonsLearned = updateTextField(report.lessonsLearned, processedReportData.lessonsLearned, 'replace');
@@ -695,6 +696,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       report.machinery = machinery;
       report.activities = processedReportData.activities; // Use processed activities
       report.hse = processedReportData.hse; // Use processed HSE
+      report.referenceSections = processedReportData.referenceSections; // Use processed referenceSection
       report.site_ref = processedReportData.site_ref; // Use processed site_ref
       report.photo_groups = processedReportData.photo_groups; // Use processed photo_groups
       report.carSheet = processedReportData.carSheet; // Use processed carSheet
@@ -703,7 +705,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       await report.save({ session });
     } else {
       // Create new report
-      
+
       const newReportData = {
         userId,
         companyId, // ← ADD THIS
@@ -740,6 +742,17 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         );
       } catch (projectError) {
         // Don't fail report creation if project update fails
+      }
+
+      const result = await report.save({ session });
+      // console.log("DEBUG: New report saved successfully with _id:", result._id);
+      
+      // Verify save immediately (Comment out for Deployment)
+      // const verification = await DailyReport.findOne({ _id: result._id }).session(session);
+      // console.log("DEBUG: Verification - found in DB:", verification ? "YES" : "NO");
+      
+      if (!verification) {
+        throw new Error("Save verification failed - document not found after save");
       }
     }
 
@@ -1139,9 +1152,9 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
   }
 };
 
-const getReportsByLocation = async (userId, location = null) => {
+const getReportsByLocation = async (location = null, projectName = null) => {
   try {
-    const query = { userId };
+    const query = { projectName };
     
     if (location) {
       query.location = location;

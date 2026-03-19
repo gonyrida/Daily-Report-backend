@@ -556,9 +556,8 @@ const getLocations = async (req, res) => {
 
 const getDailyReportsByLocation = async (req, res) => {
   try {
-    const userId = req.user.userId;
-    const { location } = req.query;
-    const reports = await dailyReportService.getReportsByLocation(userId, location);
+    const { location, projectName } = req.query;
+    const reports = await dailyReportService.getReportsByLocation(location, projectName);
     res.json(reports);
   } catch (error) {
     res.status(500).json({ error: error.message });
