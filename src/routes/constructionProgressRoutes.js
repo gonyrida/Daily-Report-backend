@@ -8,23 +8,23 @@ router.use(authenticateToken);
 
 /**
  * Routes for construction progress data
- * Base path: /api/reports/:reportId/construction-progress
+ * Base path: /api/reports/:reportId
  */
 
 // GET /api/reports/:reportId/construction-progress
 // Get construction progress data for a specific weekly report
-router.get('/:reportId/construction-progress', constructionProgressController.getConstructionProgress);
+router.get('/construction-progress', constructionProgressController.getConstructionProgress);
 
 // POST /api/reports/:reportId/construction-progress
 // Save or update construction progress data for a specific weekly report
-router.post('/:reportId/construction-progress', constructionProgressController.saveConstructionProgress);
+router.post('/construction-progress', constructionProgressController.saveConstructionProgress);
 
 // PUT /api/reports/:reportId/construction-progress
 // Alternative endpoint for updating construction progress data
-router.put('/:reportId/construction-progress', constructionProgressController.saveConstructionProgress);
+router.put('/construction-progress', constructionProgressController.saveConstructionProgress);
 
 // DELETE /api/reports/:reportId/construction-progress
 // Delete construction progress data for a specific weekly report
-router.delete('/:reportId/construction-progress', constructionProgressController.deleteConstructionProgress);
+router.delete('/construction-progress', constructionProgressController.deleteConstructionProgress);
 
 module.exports = router;

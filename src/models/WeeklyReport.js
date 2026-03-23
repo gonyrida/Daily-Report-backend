@@ -406,7 +406,7 @@ const weeklyReportSchema = new mongoose.Schema({
         revision: { type: String, default: "" }
       },
       items: [{
-        id: { type: String, required: true },
+        id: { type: String },
         isBold: { type: Boolean, default: false },
         scopeOfWorks: { type: String, default: "" },
         detailDescription: { type: String, default: "" },

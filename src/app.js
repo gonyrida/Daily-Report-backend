@@ -12,7 +12,6 @@ const projectRoutes = require("./routes/projectRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
-const constructionProgressRoutes = require("./routes/constructionProgressRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
 const env = require("./config/env"); // Add this line
@@ -102,7 +101,6 @@ app.use("/api/images", authenticateToken, imageRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
-app.use("/api/reports", authenticateToken, constructionProgressRoutes);
 
 // og:image
 app.get("/api/og-image", (_req, res) => {

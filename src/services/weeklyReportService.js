@@ -124,16 +124,42 @@ const getAllReports = async (userId, options = {}) => {
  */
 const getReportById = async (reportId, userId) => {
   try {
+    console.log('🔍 DEBUG getReportById:');
+    console.log('  - reportId:', reportId);
+    console.log('  - userId:', userId);
+    console.log('  - reportId type:', typeof reportId);
+    console.log('  - userId type:', typeof userId);
+    
+    if (!userId) {
+      console.log('❌ ERROR: userId is missing or undefined');
+      return {
+        success: false,
+        error: 'User authentication required'
+      };
+    }
+    
     const report = await WeeklyReport.findOne({ _id: reportId, userId })
       .lean();
 
+    console.log('  - found report:', report ? 'YES' : 'NO');
+    
     if (!report) {
+      // Try to find if report exists without userId filter
+      const reportWithoutUser = await WeeklyReport.findOne({ _id: reportId }).lean();
+      console.log('  - report exists without user filter:', reportWithoutUser ? 'YES' : 'NO');
+      if (reportWithoutUser) {
+        console.log('  - report belongs to userId:', reportWithoutUser.userId);
+        console.log('  - expected userId:', userId);
+        console.log('  - userId match:', reportWithoutUser.userId.toString() === userId);
+      }
+      
       return {
         success: false,
         error: 'Weekly report not found'
       };
     }
 
+    console.log('✅ SUCCESS: Report found and accessible by user');
     return {
       success: true,
       data: report
@@ -607,6 +633,15 @@ const getTemplate = async (projectName) => {
         },
         overallProgress: {
           rows: []
+        },
+        constructionProgress: {
+          projectInfo: {
+            project: '',
+            subtitle: '',
+            date: '',
+            revision: ''
+          },
+          items: []
         },
         activities: {
           weeklyActivities: [

@@ -5,7 +5,7 @@ const constructionProgressService = require('../services/constructionProgressSer
  */
 const saveConstructionProgress = async (req, res) => {
   try {
-    const { reportId } = req.params;
+    const { id } = req.params;
     const userId = req.user.userId;
     const constructionData = req.body;
 
@@ -19,7 +19,7 @@ const saveConstructionProgress = async (req, res) => {
       });
     }
 
-    const result = await constructionProgressService.saveConstructionProgress(reportId, userId, constructionData);
+    const result = await constructionProgressService.saveConstructionProgress(id, userId, constructionData);
 
     if (result.success) {
       res.status(200).json({
@@ -48,10 +48,15 @@ const saveConstructionProgress = async (req, res) => {
  */
 const getConstructionProgress = async (req, res) => {
   try {
-    const { reportId } = req.params;
+    const { id } = req.params;
+    console.log('🔍 DEBUG controller: req.params =', req.params);
+    console.log('🔍 DEBUG controller: extracted reportId =', id);
+    console.log('🔍 DEBUG getConstructionProgress: req.user =', req.user);
+    console.log('🔍 DEBUG getConstructionProgress: req.user.userId =', req.user?.userId);
     const userId = req.user.userId;
 
-    const result = await constructionProgressService.getConstructionProgress(reportId, userId);
+    console.log('🔍 DEBUG controller: calling service with reportId:', id, 'userId:', userId);
+    const result = await constructionProgressService.getConstructionProgress(id, userId);
 
     if (result.success) {
       res.status(200).json({
@@ -79,10 +84,10 @@ const getConstructionProgress = async (req, res) => {
  */
 const deleteConstructionProgress = async (req, res) => {
   try {
-    const { reportId } = req.params;
+    const { id } = req.params;
     const userId = req.user.userId;
 
-    const result = await constructionProgressService.deleteConstructionProgress(reportId, userId);
+    const result = await constructionProgressService.deleteConstructionProgress(id, userId);
 
     if (result.success) {
       res.status(200).json({

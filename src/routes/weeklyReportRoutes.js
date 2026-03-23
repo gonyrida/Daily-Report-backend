@@ -24,7 +24,25 @@ router.get('/', getWeeklyReports);
 // GET /api/weekly-reports/template - Get weekly report template
 router.get('/template', getWeeklyReportTemplate);
 
-// GET /api/weekly-reports/:id - Get single weekly report
+// Construction Progress Routes - MUST come before /:id route
+// GET /api/weekly-reports/:id/construction-progress
+router.get('/:id/construction-progress', (req, res, next) => {
+  console.log('🔍 DEBUG: Construction progress route hit!', req.params);
+  console.log('🔍 DEBUG: Full URL:', req.originalUrl);
+  console.log('🔍 DEBUG: Report ID:', req.params.id);
+  next();
+}, require('../controllers/constructionProgressController').getConstructionProgress);
+
+// POST /api/weekly-reports/:id/construction-progress  
+router.post('/:id/construction-progress', require('../controllers/constructionProgressController').saveConstructionProgress);
+
+// PUT /api/weekly-reports/:id/construction-progress
+router.put('/:id/construction-progress', require('../controllers/constructionProgressController').saveConstructionProgress);
+
+// DELETE /api/weekly-reports/:id/construction-progress
+router.delete('/:id/construction-progress', require('../controllers/constructionProgressController').deleteConstructionProgress);
+
+// GET /api/weekly-reports/:id - Get single weekly report (MUST come after specific routes)
 router.get('/:id', getWeeklyReportById);
 
 // POST /api/weekly-reports - Create new weekly report

@@ -61,7 +61,9 @@ const saveConstructionProgress = async (reportId, userId, constructionData) => {
  */
 const getConstructionProgress = async (reportId, userId) => {
   try {
+    console.log('🔍 DEBUG service getConstructionProgress called with:', { reportId, userId });
     if (!reportId || !userId) {
+      console.log('🔍 DEBUG service: Missing fields - reportId:', reportId, 'userId:', userId);
       return {
         success: false,
         error: 'Missing required fields: reportId or userId'
