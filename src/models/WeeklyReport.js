@@ -397,6 +397,60 @@ const weeklyReportSchema = new mongoose.Schema({
       fileType: { type: String, default: "" }, // MIME type
       caption: { type: String, default: "" } // File caption
     }], // Array without default to prevent override
+    
+    constructionProgress: {
+      projectInfo: {
+        project: { type: String, default: "" },
+        subtitle: { type: String, default: "" },
+        date: { type: String, default: "" },
+        revision: { type: String, default: "" }
+      },
+      items: [{
+        id: { type: String, required: true },
+        isBold: { type: Boolean, default: false },
+        scopeOfWorks: { type: String, default: "" },
+        detailDescription: { type: String, default: "" },
+        unit: { type: String, default: "" },
+        boQ: {
+          qty: { type: Number, default: 0 },
+          materialRate: { type: Number, default: 0 },
+          laborRate: { type: Number, default: 0 },
+          unitRate: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 }
+        },
+        remark: { type: String, default: "" },
+        previousWeek: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        thisWeek: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        upToThisWeek: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        remaining: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        nextWeekPlan: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        upToNextWeekPlan: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        }
+      }]
+    }
   },
   
   // Timestamps

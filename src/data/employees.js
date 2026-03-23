@@ -317,6 +317,20 @@ const employees = [
     position: "Business Development",
     department: "Marketing",
     role: "user"
+  },
+  {
+    email: "test1@cambodiacpm.com",
+    name: "User Test1",
+    position: "Marketing Manager",
+    department: "Marketing",
+    role: "user"
+  },
+  {
+    email: "test2@cambodiacpm.com",
+    name: "User Test2",
+    position: "Business Development",
+    department: "Marketing",
+    role: "user"
   }
 ];
 
