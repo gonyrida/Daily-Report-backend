@@ -751,9 +751,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       // const verification = await DailyReport.findOne({ _id: result._id }).session(session);
       // console.log("DEBUG: Verification - found in DB:", verification ? "YES" : "NO");
       
-      if (!verification) {
-        throw new Error("Save verification failed - document not found after save");
-      }
+      // if (!verification) {
+      //   throw new Error("Save verification failed - document not found after save");
+      // }
     }
 
     // Check if there are future reports that need recalculation
