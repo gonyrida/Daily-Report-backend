@@ -248,30 +248,40 @@ const weeklyReportSchema = new mongoose.Schema({
           dateResponded: String
         }],
         comments: String
+      },
+      mir: {
+        items: [{
+          code: String,
+          description: String,
+          status: String,
+          dateResponded: String
+        }],
+        comments: String
       }
     },
     
     hses: {
       training: [{
-        description: String,
+        typeOfTraining: String,
         date: String,
         venue: String,
+        trainer: String,
         attendee: String,
-        remark: String
+        remarks: String
       }],
       inspection: [{
-        description: String,
+        typeOfInspection: String,
         date: String,
         inspector: String,
-        remark: String
+        remarks: String
       }],
       permit: [{
-        description: String,
+        typeOfPermit: String,
         startDate: String,
         endDate: String,
         inspector: String,
         approver: String,
-        remark: String
+        remarks: String
       }],
       firstAidAccident: String,
       otherActivities: String,
@@ -389,7 +399,7 @@ const weeklyReportSchema = new mongoose.Schema({
       title: { type: String, required: true },
       description: { type: String, default: "" },
       date: { type: String, required: true },
-      fileName: { type: String, required: true },
+      fileName: { type: String, default: "" }, // Optional - can be empty for entries without files
       fileData: { type: String, default: "" }, // Base64 encoded file data, optional
       supabaseUrl: { type: String, default: "" }, // Supabase public URL
       supabasePath: { type: String, default: "" }, // Supabase storage path
@@ -397,6 +407,60 @@ const weeklyReportSchema = new mongoose.Schema({
       fileType: { type: String, default: "" }, // MIME type
       caption: { type: String, default: "" } // File caption
     }], // Array without default to prevent override
+    
+    constructionProgress: {
+      projectInfo: {
+        project: { type: String, default: "" },
+        subtitle: { type: String, default: "" },
+        date: { type: String, default: "" },
+        revision: { type: String, default: "" }
+      },
+      items: [{
+        id: { type: String },
+        isBold: { type: Boolean, default: false },
+        scopeOfWorks: { type: String, default: "" },
+        detailDescription: { type: String, default: "" },
+        unit: { type: String, default: "" },
+        boQ: {
+          qty: { type: Number, default: 0 },
+          materialRate: { type: Number, default: 0 },
+          laborRate: { type: Number, default: 0 },
+          unitRate: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 }
+        },
+        remark: { type: String, default: "" },
+        previousWeek: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        thisWeek: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        upToThisWeek: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        remaining: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        nextWeekPlan: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        },
+        upToNextWeekPlan: {
+          qty: { type: Number, default: 0 },
+          amount: { type: Number, default: 0 },
+          percentage: { type: Number, default: 0 }
+        }
+      }]
+    }
   },
   
   // Timestamps

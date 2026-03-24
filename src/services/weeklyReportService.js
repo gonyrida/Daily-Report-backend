@@ -124,16 +124,42 @@ const getAllReports = async (userId, options = {}) => {
  */
 const getReportById = async (reportId, userId) => {
   try {
+    console.log('🔍 DEBUG getReportById:');
+    console.log('  - reportId:', reportId);
+    console.log('  - userId:', userId);
+    console.log('  - reportId type:', typeof reportId);
+    console.log('  - userId type:', typeof userId);
+    
+    if (!userId) {
+      console.log('❌ ERROR: userId is missing or undefined');
+      return {
+        success: false,
+        error: 'User authentication required'
+      };
+    }
+    
     const report = await WeeklyReport.findOne({ _id: reportId, userId })
       .lean();
 
+    console.log('  - found report:', report ? 'YES' : 'NO');
+    
     if (!report) {
+      // Try to find if report exists without userId filter
+      const reportWithoutUser = await WeeklyReport.findOne({ _id: reportId }).lean();
+      console.log('  - report exists without user filter:', reportWithoutUser ? 'YES' : 'NO');
+      if (reportWithoutUser) {
+        console.log('  - report belongs to userId:', reportWithoutUser.userId);
+        console.log('  - expected userId:', userId);
+        console.log('  - userId match:', reportWithoutUser.userId.toString() === userId);
+      }
+      
       return {
         success: false,
         error: 'Weekly report not found'
       };
     }
 
+    console.log('✅ SUCCESS: Report found and accessible by user');
     return {
       success: true,
       data: report
@@ -234,6 +260,11 @@ const updateReport = async (reportId, userId, updateData) => {
       };
     }
 
+    // DEBUG: Log incoming HSES data
+    if (updateData.sections?.hses) {
+      console.log('🔍 BACKEND updateReport - Incoming HSES data:', JSON.stringify(updateData.sections.hses, null, 2));
+    }
+
     // Optimistic locking check
     if (updateData.version && existingReport.version !== updateData.version) {
       return {
@@ -256,6 +287,10 @@ const updateReport = async (reportId, userId, updateData) => {
         ...existingData.sections,
         ...updateData.sections
       };
+    }
+
+    // DEBUG: Log merged HSES data before save
+    if (updatedData.sections?.hses) {
     }
 
     // Merge other non-section properties
@@ -283,6 +318,10 @@ const updateReport = async (reportId, userId, updateData) => {
       updatedData,
       { new: true, runValidators: true }
     ).lean();
+
+    // DEBUG: Log saved HSES data
+    if (updatedReport?.sections?.hses) {
+    }
 
     return {
       success: true,
@@ -608,6 +647,15 @@ const getTemplate = async (projectName) => {
         overallProgress: {
           rows: []
         },
+        constructionProgress: {
+          projectInfo: {
+            project: '',
+            subtitle: '',
+            date: '',
+            revision: ''
+          },
+          items: []
+        },
         activities: {
           weeklyActivities: [
             {
@@ -798,34 +846,46 @@ const getTemplate = async (projectName) => {
               }
             ],
             comments: ''
+          },
+          mir: {
+            items: [
+              {
+                code: '',
+                description: '',
+                status: '',
+                dateResponded: ''
+              }
+            ],
+            comments: ''
           }
         },
         hses: {
           training: [
             {
-              description: '',
+              typeOfTraining: '',
               date: '',
               venue: '',
+              trainer: '',
               attendee: '',
-              remark: ''
+              remarks: ''
             }
           ],
           inspection: [
             {
-              description: '',
+              typeOfInspection: '',
               date: '',
               inspector: '',
-              remark: ''
+              remarks: ''
             }
           ],
           permit: [
             {
-              description: '',
+              typeOfPermit: '',
               startDate: '',
               endDate: '',
               inspector: '',
               approver: '',
-              remark: ''
+              remarks: ''
             }
           ],
           firstAidAccident: '',
