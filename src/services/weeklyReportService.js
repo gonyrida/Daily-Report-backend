@@ -291,7 +291,6 @@ const updateReport = async (reportId, userId, updateData) => {
 
     // DEBUG: Log merged HSES data before save
     if (updatedData.sections?.hses) {
-      console.log('🔍 BACKEND updateReport - Merged HSES data before save:', JSON.stringify(updatedData.sections.hses, null, 2));
     }
 
     // Merge other non-section properties
@@ -322,7 +321,6 @@ const updateReport = async (reportId, userId, updateData) => {
 
     // DEBUG: Log saved HSES data
     if (updatedReport?.sections?.hses) {
-      console.log('🔍 BACKEND updateReport - Saved HSES data:', JSON.stringify(updatedReport.sections.hses, null, 2));
     }
 
     return {
@@ -839,6 +837,17 @@ const getTemplate = async (projectName) => {
             comments: ''
           },
           tr: {
+            items: [
+              {
+                code: '',
+                description: '',
+                status: '',
+                dateResponded: ''
+              }
+            ],
+            comments: ''
+          },
+          mir: {
             items: [
               {
                 code: '',

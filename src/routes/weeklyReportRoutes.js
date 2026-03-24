@@ -27,9 +27,6 @@ router.get('/template', getWeeklyReportTemplate);
 // Construction Progress Routes - MUST come before /:id route
 // GET /api/weekly-reports/:id/construction-progress
 router.get('/:id/construction-progress', (req, res, next) => {
-  console.log('🔍 DEBUG: Construction progress route hit!', req.params);
-  console.log('🔍 DEBUG: Full URL:', req.originalUrl);
-  console.log('🔍 DEBUG: Report ID:', req.params.id);
   next();
 }, require('../controllers/constructionProgressController').getConstructionProgress);
 

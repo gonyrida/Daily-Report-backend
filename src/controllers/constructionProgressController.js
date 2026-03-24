@@ -49,13 +49,7 @@ const saveConstructionProgress = async (req, res) => {
 const getConstructionProgress = async (req, res) => {
   try {
     const { id } = req.params;
-    console.log('🔍 DEBUG controller: req.params =', req.params);
-    console.log('🔍 DEBUG controller: extracted reportId =', id);
-    console.log('🔍 DEBUG getConstructionProgress: req.user =', req.user);
-    console.log('🔍 DEBUG getConstructionProgress: req.user.userId =', req.user?.userId);
     const userId = req.user.userId;
-
-    console.log('🔍 DEBUG controller: calling service with reportId:', id, 'userId:', userId);
     const result = await constructionProgressService.getConstructionProgress(id, userId);
 
     if (result.success) {

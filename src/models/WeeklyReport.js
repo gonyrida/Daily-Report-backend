@@ -248,6 +248,15 @@ const weeklyReportSchema = new mongoose.Schema({
           dateResponded: String
         }],
         comments: String
+      },
+      mir: {
+        items: [{
+          code: String,
+          description: String,
+          status: String,
+          dateResponded: String
+        }],
+        comments: String
       }
     },
     
