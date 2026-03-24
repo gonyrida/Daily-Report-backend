@@ -260,6 +260,11 @@ const updateReport = async (reportId, userId, updateData) => {
       };
     }
 
+    // DEBUG: Log incoming HSES data
+    if (updateData.sections?.hses) {
+      console.log('🔍 BACKEND updateReport - Incoming HSES data:', JSON.stringify(updateData.sections.hses, null, 2));
+    }
+
     // Optimistic locking check
     if (updateData.version && existingReport.version !== updateData.version) {
       return {
@@ -282,6 +287,11 @@ const updateReport = async (reportId, userId, updateData) => {
         ...existingData.sections,
         ...updateData.sections
       };
+    }
+
+    // DEBUG: Log merged HSES data before save
+    if (updatedData.sections?.hses) {
+      console.log('🔍 BACKEND updateReport - Merged HSES data before save:', JSON.stringify(updatedData.sections.hses, null, 2));
     }
 
     // Merge other non-section properties
@@ -309,6 +319,11 @@ const updateReport = async (reportId, userId, updateData) => {
       updatedData,
       { new: true, runValidators: true }
     ).lean();
+
+    // DEBUG: Log saved HSES data
+    if (updatedReport?.sections?.hses) {
+      console.log('🔍 BACKEND updateReport - Saved HSES data:', JSON.stringify(updatedReport.sections.hses, null, 2));
+    }
 
     return {
       success: true,
@@ -838,29 +853,30 @@ const getTemplate = async (projectName) => {
         hses: {
           training: [
             {
-              description: '',
+              typeOfTraining: '',
               date: '',
               venue: '',
+              trainer: '',
               attendee: '',
-              remark: ''
+              remarks: ''
             }
           ],
           inspection: [
             {
-              description: '',
+              typeOfInspection: '',
               date: '',
               inspector: '',
-              remark: ''
+              remarks: ''
             }
           ],
           permit: [
             {
-              description: '',
+              typeOfPermit: '',
               startDate: '',
               endDate: '',
               inspector: '',
               approver: '',
-              remark: ''
+              remarks: ''
             }
           ],
           firstAidAccident: '',

@@ -253,25 +253,26 @@ const weeklyReportSchema = new mongoose.Schema({
     
     hses: {
       training: [{
-        description: String,
+        typeOfTraining: String,
         date: String,
         venue: String,
+        trainer: String,
         attendee: String,
-        remark: String
+        remarks: String
       }],
       inspection: [{
-        description: String,
+        typeOfInspection: String,
         date: String,
         inspector: String,
-        remark: String
+        remarks: String
       }],
       permit: [{
-        description: String,
+        typeOfPermit: String,
         startDate: String,
         endDate: String,
         inspector: String,
         approver: String,
-        remark: String
+        remarks: String
       }],
       firstAidAccident: String,
       otherActivities: String,
@@ -389,7 +390,7 @@ const weeklyReportSchema = new mongoose.Schema({
       title: { type: String, required: true },
       description: { type: String, default: "" },
       date: { type: String, required: true },
-      fileName: { type: String, required: true },
+      fileName: { type: String, default: "" }, // Optional - can be empty for entries without files
       fileData: { type: String, default: "" }, // Base64 encoded file data, optional
       supabaseUrl: { type: String, default: "" }, // Supabase public URL
       supabasePath: { type: String, default: "" }, // Supabase storage path
