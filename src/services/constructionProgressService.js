@@ -1,4 +1,5 @@
 const WeeklyReport = require('../models/WeeklyReport');
+const weeklyReportService = require('./weeklyReportService'); // ← ADD THIS
 
 /**
  * Save construction progress data to a weekly report
@@ -59,40 +60,33 @@ const saveConstructionProgress = async (reportId, userId, constructionData) => {
 /**
  * Get construction progress data from a weekly report
  */
-const getConstructionProgress = async (reportId, userId) => {
+const getConstructionProgress = async (reportId, userId, companyId) => {
   try {
-    console.log('🔍 DEBUG service getConstructionProgress called with:', { reportId, userId });
     if (!reportId || !userId) {
-      console.log('🔍 DEBUG service: Missing fields - reportId:', reportId, 'userId:', userId);
       return {
         success: false,
         error: 'Missing required fields: reportId or userId'
       };
     }
 
-    const report = await WeeklyReport.findOne(
-      { _id: reportId, userId },
-      { 'sections.constructionProgress': 1 }
-    );
-
-    if (!report) {
+    // Use the updated getReportById function that supports company-wide access
+    const reportResult = await weeklyReportService.getReportById(reportId, userId, companyId);
+    
+    if (!reportResult.success) {
       return {
         success: false,
         error: 'Report not found or access denied'
       };
     }
-
+    
+    const report = reportResult.data;
+    
+    // Extract construction progress section
+    const constructionProgress = report?.sections?.constructionProgress || null;
+    
     return {
       success: true,
-      data: report.sections?.constructionProgress || {
-        projectInfo: {
-          project: "",
-          subtitle: "",
-          date: "",
-          revision: ""
-        },
-        items: []
-      },
+      data: constructionProgress,
       message: 'Construction progress retrieved successfully'
     };
   } catch (error) {
