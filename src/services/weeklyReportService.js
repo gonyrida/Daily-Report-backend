@@ -405,12 +405,13 @@ const submitReport = async (reportId, userId) => {
       };
     }
 
-    if (report.status !== 'draft' && report.status !== 'in-progress') {
-      return {
-        success: false,
-        error: 'Only draft or in-progress reports can be submitted'
-      };
-    }
+    // Allow re-submission of already submitted reports
+    // if (report.status !== 'draft' && report.status !== 'in-progress') {
+    //   return {
+    //     success: false,
+    //     error: 'Only draft or in-progress reports can be submitted'
+    //   };
+    // }
 
     const updatedReport = await WeeklyReport.findByIdAndUpdate(
       reportId,
