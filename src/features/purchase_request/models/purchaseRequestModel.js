@@ -13,6 +13,17 @@ const purchaseRequestSchema = new mongoose.Schema(
       required: [true, "Requester department is required"],
       trim: true,
     },
+    groupId: { // Group ID for organizing related requests
+      type: mongoose.Schema.Types.ObjectId,
+      required: false, // Make optional if needed
+      index: true // Add index for better queries
+    },
+    version: { // Version number for tracking revisions
+      type: Number,
+      default: 1, // Start with version 1
+      min: 1, // Minimum version is 1
+      required: true
+    },
     
     // Project Details
     projectName: {
@@ -132,7 +143,7 @@ const purchaseRequestSchema = new mongoose.Schema(
     // Status and Metadata
     status: {
       type: String,
-      enum: ["pending", "checked", "verified", "approved", "rejected","draft"],
+      enum: ["pending", "checked", "verified", "approved", "rejected", "draft", "revised"],
       default: "pending",
     },
     priority: {
@@ -256,6 +267,13 @@ purchaseRequestSchema.pre("save", async function () {
     this.grandTotal = Math.round(total * 100) / 100;
 
     console.log(`Updated grandTotal: ${this.grandTotal}`);
+  }
+});
+
+purchaseRequestSchema.pre('save', async function() {
+  // Set groupId to _id if it's null and this is a new document
+  if (this.isNew && !this.groupId) {
+    this.groupId = this._id;
   }
 });
 

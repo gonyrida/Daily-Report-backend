@@ -4,6 +4,7 @@ const User = require("../../../models/userModel");
 const { 
   validateApproverWorkflow
 } = require("../helpers/validationApproverWorkflow");
+const { createAuditLog } = require("../helpers/createAuditLog");
 
 // Define order of the approval workflow roles
 const ROLE_ORDER = ['checked','verified','approved'];
@@ -81,6 +82,8 @@ exports.createPurchaseRequest = async (req, res) => {
     const purchaseRequest = new PurchaseRequest({
       requesterName,
       requesterDepartment,
+      groupId: null, // Will be set to request ID after creation
+      version: 1, // Start with version 1
       projectName,
       purpose,
       requestDate,
@@ -127,6 +130,17 @@ exports.createPurchaseRequest = async (req, res) => {
       companyId: user.companyId,
       createdBy: user._id
     });
+
+    // Log creation action
+    await createAuditLog(
+      purchaseRequest._id,
+      user._id,
+      'prepared',
+      user.department || 'unknown',
+      'completed',
+      'created',
+      'Request created by user'
+    );
 
     // Grand total will be calculated automatically by pre-save middleware
     await purchaseRequest.save();
@@ -303,6 +317,11 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
         message: "Workflow step not found"
       });
     }
+
+    const previousState = {
+      status: purchaseRequest.status,
+      workflowStep: { ...workflowStep.toObject() }
+    };
     
     // Handle rejection immediately (no sequential validation needed)
     if (status === 'rejected') {
@@ -313,6 +332,20 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
       
       purchaseRequest.status = 'rejected';
       await purchaseRequest.save();
+      
+      // Add audit log for rejection
+      const approverUser = await User.findById(approverId);
+      await createAuditLog(
+        purchaseRequest._id,
+        approverId,
+        role,
+        approverUser?.department || 'unknown',
+        'rejected',
+        'rejected',
+        notes,
+        previousState,
+        { status: 'rejected', workflowStep: { ...workflowStep.toObject() } }
+      );
       
       return res.status(200).json({
         success: true,
@@ -339,6 +372,24 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
     workflowStep.status = 'approved';
     workflowStep.timestamp = new Date();
     workflowStep.notes = notes;
+
+    const newState = {
+      status: purchaseRequest.status,
+      workflowStep: { ...workflowStep.toObject() }
+    };
+
+    const approverUser = await User.findById(approverId);
+    await createAuditLog(
+      purchaseRequest._id,
+      approverId,
+      role,
+      approverUser?.department || 'unknown',
+      status === 'rejected' ? 'rejected' : 'approved',
+      status === 'rejected' ? 'rejected' : 'approved',
+      notes,
+      previousState,
+      newState
+    );
 
     // Determine overall purchase request status:
     // - If this action is a rejection, mark request as 'rejected'
@@ -408,6 +459,18 @@ exports.deletePurchaseRequest = async (req, res) => {
     // Soft delete
     purchaseRequest.isDeleted = true;
     purchaseRequest.deletedAt = new Date();
+
+    // Log cancellation action
+    await createAuditLog(
+      purchaseRequest._id,
+      user._id,
+      'prepared',
+      user.department || 'unknown',
+      'completed',
+      'cancelled',
+      'Request deleted by creator'
+    );
+
     await purchaseRequest.save();
 
     res.status(200).json({
@@ -572,7 +635,7 @@ exports.updatePurchaseRequest = async (req, res) => {
 
     // or inspect the workflow itself
     const approvalStarted = purchaseRequest.approvalWorkflow.some(
-      step => step.role !== 'prepared' && step.status === 'completed'
+      step => step.role !== 'prepared' && step.status === 'approved'
     );
     if (approvalStarted) {
       return res.status(400).json({
@@ -590,6 +653,13 @@ exports.updatePurchaseRequest = async (req, res) => {
           message: workflowValidation.message
         });
       }
+    }
+
+    if (purchaseRequest.status === 'pending' && status === 'draft') {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot change status from pending to draft"
+      });
     }
 
     // Update fields
@@ -612,7 +682,20 @@ exports.updatePurchaseRequest = async (req, res) => {
       if (approvedStep) approvedStep.approver = approvers.approvedBy || null;
     }
     purchaseRequest.priority = priority;
-    purchaseRequest.status = status;
+    if (purchaseRequest.status === 'draft' && status === 'pending') {
+      purchaseRequest.status = status;
+    }
+
+    // Log modification action
+    await createAuditLog(
+      purchaseRequest._id,
+      user._id,
+      'prepared',
+      user.department || 'unknown',
+      'completed',
+      'modified',
+      'Request updated by creator'
+    );
 
     await purchaseRequest.save();
 
@@ -669,6 +752,149 @@ exports.getPendingApprovals = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error retrieving pending approvals"
+    });
+  }
+};
+
+exports.revisedPurchaseRequest = async (req, res) => {
+  try {
+    const {
+      requesterName,
+      requesterDepartment,
+      projectName,
+      purpose,
+      requestDate,
+      deliveryPlace,
+      categories,
+      items,
+      approvers,
+      notes,
+      priority
+    } = req.body;
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    // Find original request
+    const originalRequest = await PurchaseRequest.findById(req.params.id);
+    if (!originalRequest) {
+      return res.status(404).json({
+        success: false,
+        message: "Original purchase request not found"
+      });
+    }
+
+    // Validate approver workflow assignments
+    const workflowValidation = validateApproverWorkflow(approvers, req.user.userId);
+    if (!workflowValidation.valid) {
+      return res.status(400).json({
+        success: false,
+        message: workflowValidation.message
+      });
+    }
+
+    // Create revised request with same groupId but incremented version
+    const revisedRequest = new PurchaseRequest({
+      requesterName,
+      requesterDepartment,
+      groupId: originalRequest.groupId, // Keep same groupId as original
+      version: (originalRequest.version || 1) + 1, // Increment version
+      projectName,
+      purpose,
+      requestDate,
+      deliveryPlace,
+      categories: categories || {
+        construction: false,
+        admin: false,
+        material: false,
+        services: false
+      },
+      items,
+      status: 'pending', // Reset to pending for revision
+      priority: priority || 'medium',
+      companyId: user.companyId,
+      createdBy: user._id,
+      approvalWorkflow: [
+        {
+          approver: user._id,
+          role: 'prepared',
+          status: 'completed',
+          timestamp: new Date(),
+          notes: 'Request revised by user'
+        },
+        {
+          approver: approvers?.checkedBy || null,
+          role: 'checked',
+          status: 'pending',
+          timestamp: null,
+          notes: null
+        },
+        {
+          approver: approvers?.verifiedBy || null,
+          role: 'verified',
+          status: 'pending',
+          timestamp: null,
+          notes: null
+        },
+        {
+          approver: approvers?.approvedBy || null,
+          role: 'approved',
+          status: 'pending',
+          timestamp: null,
+          notes: null
+        }
+      ]
+    });
+
+    // Save revised request
+    await revisedRequest.save();
+
+    // Log revision action for original request
+    await createAuditLog(
+      originalRequest._id,
+      user._id,
+      'prepared',
+      user.department || 'unknown',
+      'revised',
+      'revised',
+      notes || 'Request revised - new version created'
+    );
+
+    // Log creation action for revised request
+    await createAuditLog(
+      revisedRequest._id,
+      user._id,
+      'prepared',
+      user.department || 'unknown',
+      'completed',
+      'created',
+      'Revised request created'
+    );
+
+    // Update original request status to indicate it has been revised
+    await PurchaseRequest.findByIdAndUpdate(originalRequest._id, {
+      status: 'revised'
+    });
+
+    // Populate user details for response
+    await revisedRequest.populate('createdBy', 'firstName lastName email');
+
+    res.status(201).json({
+      success: true,
+      message: "Purchase request revised successfully",
+      data: revisedRequest
+    });
+
+  } catch (error) {
+    console.error("Revise purchase request error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error revising purchase request"
     });
   }
 };
