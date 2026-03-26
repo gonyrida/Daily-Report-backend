@@ -1,6 +1,7 @@
 const WeeklyReport = require('../models/WeeklyReport');
 const DailyReport = require('../models/dailyReportModel'); // NEW: Import Daily Report model
 const { aggregateManpowerData, updateWeeklyReportManpower } = require('../utils/manpowerAggregation');
+const mongoose = require('mongoose'); // ← ADD THIS
 
 /**
  * Transform frontend activity data to backend format
@@ -122,50 +123,31 @@ const getAllReports = async (userId, options = {}) => {
 /**
  * Get a single weekly report by ID
  */
-const getReportById = async (reportId, userId) => {
+const getReportById = async (reportId, userId, companyId) => {
   try {
-    console.log('🔍 DEBUG getReportById:');
-    console.log('  - reportId:', reportId);
-    console.log('  - userId:', userId);
-    console.log('  - reportId type:', typeof reportId);
-    console.log('  - userId type:', typeof userId);
-    
-    if (!userId) {
-      console.log('❌ ERROR: userId is missing or undefined');
-      return {
-        success: false,
-        error: 'User authentication required'
-      };
-    }
-    
-    const report = await WeeklyReport.findOne({ _id: reportId, userId })
+    // First try to find user's own report
+    let report = await WeeklyReport.findOne({ _id: reportId, userId })
       .lean();
 
-    console.log('  - found report:', report ? 'YES' : 'NO');
-    
+    // If not found and user has companyId, try company-wide access for submitted reports
+    if (!report && companyId) {
+      report = await WeeklyReport.findOne({ _id: reportId, companyId, status: 'submitted' })
+        .lean();
+    }
+
     if (!report) {
-      // Try to find if report exists without userId filter
-      const reportWithoutUser = await WeeklyReport.findOne({ _id: reportId }).lean();
-      console.log('  - report exists without user filter:', reportWithoutUser ? 'YES' : 'NO');
-      if (reportWithoutUser) {
-        console.log('  - report belongs to userId:', reportWithoutUser.userId);
-        console.log('  - expected userId:', userId);
-        console.log('  - userId match:', reportWithoutUser.userId.toString() === userId);
-      }
-      
       return {
         success: false,
         error: 'Weekly report not found'
       };
     }
 
-    console.log('✅ SUCCESS: Report found and accessible by user');
     return {
       success: true,
       data: report
     };
   } catch (error) {
-    console.error('Error getting weekly report:', error);
+    console.error('Get weekly report by ID error:', error);
     return {
       success: false,
       error: 'Failed to retrieve weekly report',
@@ -177,7 +159,7 @@ const getReportById = async (reportId, userId) => {
 /**
  * Create a new weekly report
  */
-const createReport = async (userId, reportData) => {
+const createReport = async (userId, companyId, reportData) => {
   try {
     // Ensure sections object exists and has introduction with proper defaults
     const sections = {
@@ -198,6 +180,7 @@ const createReport = async (userId, reportData) => {
       endDate: reportData.endDate,
       sections: sections,  // Use the sections object directly
       userId,
+      companyId,  // ← ADD THIS
       status: 'draft',
       version: 1
     });
@@ -405,12 +388,13 @@ const submitReport = async (reportId, userId) => {
       };
     }
 
-    if (report.status !== 'draft' && report.status !== 'in-progress') {
-      return {
-        success: false,
-        error: 'Only draft or in-progress reports can be submitted'
-      };
-    }
+    // Allow re-submission of already submitted reports
+    // if (report.status !== 'draft' && report.status !== 'in-progress') {
+    //   return {
+    //     success: false,
+    //     error: 'Only draft or in-progress reports can be submitted'
+    //   };
+    // }
 
     const updatedReport = await WeeklyReport.findByIdAndUpdate(
       reportId,
@@ -1274,14 +1258,15 @@ const updateReportManpower = async (reportId, options = {}) => {
 /**
  * Create weekly report with automatic manpower aggregation
  * @param {string} userId - User ID
+ * @param {string} companyId - Company ID
  * @param {Object} reportData - Report data
  * @param {Object} aggregationOptions - Options for manpower aggregation
  * @returns {Promise<Object>} - Created report with aggregated manpower
  */
-const createReportWithManpower = async (userId, reportData, aggregationOptions = {}) => {
+const createReportWithManpower = async (userId, companyId, reportData, aggregationOptions = {}) => {
   try {
     // Create the weekly report first
-    const createResult = await createReport(userId, reportData);
+    const createResult = await createReport(userId, companyId, reportData);
     
     if (!createResult.success) {
       return createResult;
@@ -1318,6 +1303,89 @@ const createReportWithManpower = async (userId, reportData, aggregationOptions =
   }
 };
 
+/**
+ * Get company-wide weekly reports (submitted only) with pagination and filtering
+ * Similar to getCompanyReports in dailyReportService
+ */
+const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+  try {
+    const skip = (page - 1) * limit;
+    
+    // Build search query - only submitted reports for company view
+    // Include reports with matching companyId OR reports without companyId (backward compatibility)
+    let searchQuery = { 
+      status: "submitted"
+    };
+    
+    // Handle companyId matching - try both exact match and legacy reports
+    if (companyId) {
+      // Convert to ObjectId if it's a string
+      const companyIdObj = typeof companyId === 'string' ? new mongoose.Types.ObjectId(companyId) : companyId;
+      
+      searchQuery.$or = [
+        { companyId: companyIdObj },  // Reports with matching ObjectId companyId
+        { companyId: { $exists: false } },  // Legacy reports without companyId field
+        { companyId: null }  // Legacy reports with null companyId
+      ];
+    }
+
+    // Add search filter
+    if (search) {
+      searchQuery = {
+        $and: [
+          searchQuery,
+          {
+            $or: [
+              { projectName: { $regex: search, $options: "i" } },
+              { "sections.activities.description": { $regex: search, $options: "i" } },
+              { "userId.firstName": { $regex: search, $options: "i" } },
+              { "userId.lastName": { $regex: search, $options: "i" } }
+            ]
+          }
+        ]
+      };
+    }
+
+    // Add project filter - exact match
+    if (projectFilter) {
+      searchQuery = {
+        $and: [
+          searchQuery,
+          { projectName: projectFilter }
+        ]
+      };
+    }
+
+    const [reports, total] = await Promise.all([
+      WeeklyReport.find(searchQuery)
+        .sort({ startDate: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('userId', 'firstName lastName email'),
+      WeeklyReport.countDocuments(searchQuery)
+    ]);
+    
+    return {
+      success: true,
+      data: reports,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        hasNext: page * limit < total,
+        hasPrev: page > 1
+      }
+    };
+  } catch (error) {
+    console.error('Get company weekly reports error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
 module.exports = {
   getAllReports,
   getReportById,
@@ -1333,6 +1401,8 @@ module.exports = {
   getBulkImportStats,
   getTemplate,
   updateSection,
+  // Company reports function
+  getCompanyWeeklyReports,
   // Manpower aggregation functions
   aggregateWeeklyManpower,
   updateReportManpower,

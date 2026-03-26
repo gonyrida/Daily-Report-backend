@@ -15,11 +15,15 @@ const {
   duplicateWeeklyReport,
   validateWeeklyReport,
   aggregateManpower,
-  updateReportManpower
+  updateReportManpower,
+  getCompanyWeeklyReports
 } = require('../controllers/weeklyReportController');
 
 // GET /api/weekly-reports - Get all weekly reports for user
 router.get('/', getWeeklyReports);
+
+// GET /api/weekly-reports/company - Get company-wide submitted weekly reports
+router.get('/company', getCompanyWeeklyReports);
 
 // GET /api/weekly-reports/template - Get weekly report template
 router.get('/template', getWeeklyReportTemplate);

@@ -60,8 +60,9 @@ const getWeeklyReportById = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
+    const companyId = req.user.companyId; // ← ADD THIS
 
-    const result = await weeklyReportService.getReportById(id, userId);
+    const result = await weeklyReportService.getReportById(id, userId, companyId); // ← PASS companyId
 
     if (result.success) {
       res.status(200).json({
@@ -90,16 +91,17 @@ const getWeeklyReportById = async (req, res) => {
 const createWeeklyReport = async (req, res) => {
   try {
     const userId = req.user.userId;
+    const companyId = req.user.companyId; // ← ADD THIS
     const reportData = req.body;
     const { aggregateManpower = false, aggregationOptions = {} } = req.body;
 
     let result;
     if (aggregateManpower) {
       // Create with automatic manpower aggregation
-      result = await weeklyReportService.createReportWithManpower(userId, reportData, aggregationOptions);
+      result = await weeklyReportService.createReportWithManpower(userId, companyId, reportData, aggregationOptions);
     } else {
       // Create without aggregation (original behavior)
-      result = await weeklyReportService.createReport(userId, reportData);
+      result = await weeklyReportService.createReport(userId, companyId, reportData);
     }
 
     if (result.success) {
@@ -559,6 +561,56 @@ const updateReportManpower = async (req, res) => {
   }
 };
 
+/**
+ * Get company-wide weekly reports (submitted only)
+ * Similar to getCompanyReports in dailyReportController
+ */
+const getCompanyWeeklyReports = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = "", project = "" } = req.query;
+    const companyId = req.user.companyId;
+
+    // Check if user has companyId
+    if (!companyId) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not associated with any company"
+      });
+    }
+
+    const result = await weeklyReportService.getCompanyWeeklyReports(
+      companyId,
+      parseInt(page),
+      parseInt(limit),
+      search,
+      project
+    );
+
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to fetch company weekly reports",
+        error: result.error
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Company weekly reports fetched successfully",
+      reports: result.data,
+      pagination: result.pagination
+    });
+
+  } catch (error) {
+    console.error("Get company weekly reports controller error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching company weekly reports",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined
+    });
+  }
+};
+
 module.exports = {
   getWeeklyReports,
   getWeeklyReportById,
@@ -572,6 +624,8 @@ module.exports = {
   getWeeklyReportTemplate,
   duplicateWeeklyReport,
   validateWeeklyReport,
+  // Company reports endpoint
+  getCompanyWeeklyReports,
   // Manpower aggregation endpoints
   aggregateManpower,
   updateReportManpower

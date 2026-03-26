@@ -50,7 +50,8 @@ const getConstructionProgress = async (req, res) => {
   try {
     const { id } = req.params;
     const userId = req.user.userId;
-    const result = await constructionProgressService.getConstructionProgress(id, userId);
+    const companyId = req.user.companyId; // ← ADD THIS
+    const result = await constructionProgressService.getConstructionProgress(id, userId, companyId); // ← PASS companyId
 
     if (result.success) {
       res.status(200).json({
