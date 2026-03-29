@@ -9,6 +9,12 @@ const ProjectSchema = new mongoose.Schema({
   status: { type: String, default: 'active', enum: ['active', 'on_hold', 'completed'] },
   requestDate: { type: Date, default: Date.now },
   visibility: { type: String, default: 'private', enum: ['public', 'private'] },
+  counter: { // Counter number for tracking request
+    type: Number,
+    default: 0, // Start with counter 0
+    min: 0, // Minimum counter is 0
+    required: true
+  },
   
   // --- SUB-PROJECTS ---
   subProjects: [{

@@ -2,6 +2,7 @@
 const PR_Project = require("../models/projectPRModel");
 const User = require("../../../models/userModel");
 const Company = require("../../../models/companyModel");
+const mongoose = require('mongoose');
 
 // @desc    Create new project
 // @route   POST /api/purchase-requests/projects
@@ -18,7 +19,7 @@ exports.createPRProject = async (req, res) => {
       budgetSettings,
       purposes,
       members,
-      visibility
+      visibility,
     } = req.body;
 
     // Validation
@@ -50,8 +51,6 @@ exports.createPRProject = async (req, res) => {
 
     // Get company information
     const company = await Company.findById(req.user.companyId);
-
-    console.log("This is company: ", company);
     if (!company) {
       return res.status(404).json({
         success: false,
@@ -59,17 +58,49 @@ exports.createPRProject = async (req, res) => {
       });
     }
 
-    // Check if project code already exists for this company
+    // Check if project name already exists for this company
     const existingProject = await PR_Project.findOne({
-      projectCode,
+      name,
       companyId: user.companyId
     });
 
     if (existingProject) {
       return res.status(400).json({
         success: false,
+        message: "Project name already exists"
+      });
+    }
+
+    // Check if project code already exists for this company
+    const existingProjectCode = await PR_Project.findOne({
+      projectCode,
+      companyId: user.companyId
+    });
+
+    if (existingProjectCode) {
+      return res.status(400).json({
+        success: false,
         message: "Project code already exists"
       });
+    }
+
+    // Check if sub_project is being created and if it already exists
+    if (subProjects && subProjects.length > 0) {
+      // Extract only the names from the incoming objects
+      const subProjectNames = subProjects.map(sp => sp.name);
+
+      // Search specifically for those names in the subProjects array
+      const existingSubProject = await PR_Project.findOne({
+        "subProjects.name": { $in: subProjectNames }, // Target the 'name' field inside the array
+        companyId: user.companyId
+      });
+
+      if (existingSubProject) {
+        return res.status(400).json({
+          success: false,
+          message: "A sub-project with one of these names already exists in another project."
+        });
+      }
     }
 
     // Create project
@@ -80,6 +111,7 @@ exports.createPRProject = async (req, res) => {
       status: status || 'active',
       requestDate: requestDate || new Date(),
       visibility: visibility || 'private',
+      counter: 0,
       subProjects: subProjects || [],
       budgetSettings: {
         MBOQ: parseFloat(budgetSettings?.MBOQ) || 0,
@@ -119,48 +151,121 @@ exports.createPRProject = async (req, res) => {
 // @access  Private
 exports.getPRProjects = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    const companyId = new mongoose.Types.ObjectId(req.user.companyId);
+    const { page = 1, limit = 10, status, search } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Base Match: Filter by Company and Status
+    let matchStage = { companyId: companyId };
+
+    // 2. Add Status if it exists
+    if (status) {
+      matchStage.status = status;
+    }
+
+    // 3. Add Permissions AND Search using a guaranteed $and array
+    let criteria = [];
+
+    // Permission Criteria
+    if (req.user.role === 'user') {
+      criteria.push({
+        $or: [
+          { visibility: 'public' },
+          { "members._id": userId }
+        ]
       });
     }
 
-    const { page = 1, limit = 10, status, search } = req.query;
-    const skip = (page - 1) * limit;
-
-    // Build query
-    let query = {
-      companyId: user.companyId
-    };
-
-    // Filter by status if provided
-    if (status) {
-      query.status = status;
-    }
-
-    // Search functionality
+    // Search Criteria
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { projectCode: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } }
-      ];
+      criteria.push({
+        $or: [
+          { name: { $regex: search, $options: 'i' } },
+          { projectCode: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } }
+        ]
+      });
     }
 
-    const projects = await PR_Project.find(query)
-      // .select('name projectCode status createdAt')
-      .populate('createdBy', 'firstName lastName email')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    // 4. Finalize the matchStage
+    if (criteria.length > 0) {
+      matchStage.$and = criteria;
+    }
 
-    const total = await PR_Project.countDocuments(query);
+    // 5. Start the pipeline
+    let pipeline = [{ $match: matchStage }];
+
+    if (req.user.role === 'user') {
+      /** * USER ROLE: Flatten and filter specific subProjects
+       */
+      pipeline.push(
+        {
+          $project: {
+            createdAt: 1,
+            parentProjectCode: "$projectCode",
+            // We only keep purposes as they are
+            purposes: {
+              $map: {
+                input: "$purposes",
+                as: "purp",
+                in: {
+                  _id: "$$purp._id",
+                  name: "$$purp.name"
+                }
+              }
+            },
+            // We FILTER the subProjects array directly in the DB
+            subProjects: {
+              $filter: {
+                input: "$subProjects",
+                as: "sub",
+                cond: {
+                  $or: [
+                    // If no search, keep all. If search exists, check the name.
+                    { $eq: [search || "", ""] }, 
+                    { $regexMatch: { input: "$$sub.name", regex: search || "", options: "i" } }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        // Only return the project if it actually has matching sub-projects left
+        { $match: { "subProjects.0": { $exists: true } } }
+      );
+    } else {
+      /** * ADMIN/APPROVER ROLE: Keep project documents intact
+       */
+      pipeline.push({
+        $lookup: {
+          from: "users", // Adjust if your collection name is different
+          localField: "createdBy",
+          foreignField: "_id",
+          as: "createdBy"
+        }
+      },
+      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } });
+    }
+
+    // 3. Shared Pagination and Sorting
+    pipeline.push(
+      { $sort: { createdAt: -1 } },
+      {
+        $facet: {
+          metadata: [{ $count: "total" }],
+          data: [{ $skip: skip }, { $limit: parseInt(limit) }]
+        }
+      }
+    );
+
+    const result = await PR_Project.aggregate(pipeline);
+    const data = result[0].data;
+    const total = result[0].metadata[0]?.total || 0;
 
     res.status(200).json({
       success: true,
-      data: projects,
+      data: data, // Now consistently formatted based on role
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -170,11 +275,8 @@ exports.getPRProjects = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Get projects error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error retrieving projects"
-    });
+    console.error("Aggregation Error:", error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
@@ -188,6 +290,22 @@ exports.getPRProjectById = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "User not found"
+      });
+    }
+
+    if (user.role !== 'admin' && user.role !== 'approver') {
+      return res.status(403).json({
+        success: false,
+        message: "User is not authorized to view specific projects"
+      });
+    }
+
+    // Get company information
+    const company = await Company.findById(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found"
       });
     }
 
@@ -248,10 +366,10 @@ exports.updatePRProject = async (req, res) => {
       companyId: user.companyId
     });
 
-    if (!project) {
-      return res.status(404).json({
+    if (user.role !== 'admin' && user.role !== 'approver') {
+      return res.status(403).json({
         success: false,
-        message: "Project not found"
+        message: "User is not authorized to update specific projects"
       });
     }
 
@@ -260,6 +378,38 @@ exports.updatePRProject = async (req, res) => {
         success: false,
         message: "You are not authorized to update this project"
       });
+    }
+
+    // Get company information
+    const company = await Company.findById(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found"
+      });
+    }
+
+    if (!project) {
+      return res.status(404).json({
+        success: false,
+        message: "Project not found"
+      });
+    }
+
+    // Check if project name is being changed and if it already exists
+    if (name && name !== project.name) {
+      const existingProject = await PR_Project.findOne({
+        name,
+        companyId: user.companyId,
+        _id: { $ne: req.params.id }
+      });
+
+      if (existingProject) {
+        return res.status(400).json({
+          success: false,
+          message: "Project name already exists"
+        });
+      }
     }
 
     // Check if project code is being changed and if it already exists
@@ -274,6 +424,26 @@ exports.updatePRProject = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "Project code already exists"
+        });
+      }
+    }
+
+    // Check if sub_project is being changed and if it already exists
+    if (subProjects && subProjects.length > 0) {
+      // 1. Extract only the names from the incoming objects
+      const subProjectNames = subProjects.map(sp => sp.name);
+
+      // 2. Search specifically for those names in the subProjects array
+      const existingSubProject = await PR_Project.findOne({
+        "subProjects.name": { $in: subProjectNames }, // Target the 'name' field inside the array
+        companyId: user.companyId,
+        _id: { $ne: req.params.id } // Exclude the current document
+      });
+
+      if (existingSubProject) {
+        return res.status(400).json({
+          success: false,
+          message: "A sub-project with one of these names already exists in another project."
         });
       }
     }
@@ -328,6 +498,31 @@ exports.deletePRProject = async (req, res) => {
       });
     }
 
+
+    if (user.role !== 'admin' && user.role !== 'approver') {
+      return res.status(403).json({
+        success: false,
+        message: "User is not authorized to delete specific projects"
+      });
+    }
+
+
+    if (user._id.toString() !== project.createdBy.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to delete this project"
+      });
+    }
+
+    // Get company information
+    const company = await Company.findById(req.user.companyId);
+    if (!company) {
+      return res.status(404).json({
+        success: false,
+        message: "Company not found"
+      });
+    }
+
     const project = await PR_Project.findOne({
       _id: req.params.id,
       companyId: user.companyId
@@ -360,46 +555,46 @@ exports.deletePRProject = async (req, res) => {
 // @route   GET /api/purchase-requests/projects/search-users
 // @access  Private
 exports.searchUsers = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
-    }
+  // try {
+  //   const user = await User.findById(req.user.userId);
+  //   if (!user) {
+  //     return res.status(404).json({
+  //       success: false,
+  //       message: "User not found"
+  //     });
+  //   }
 
-    const { q } = req.query;
+  //   const { q } = req.query;
 
-    if (!q || q.length < 2) {
-      return res.status(400).json({
-        success: false,
-        message: "Search query must be at least 2 characters"
-      });
-    }
+  //   if (!q || q.length < 2) {
+  //     return res.status(400).json({
+  //       success: false,
+  //       message: "Search query must be at least 2 characters"
+  //     });
+  //   }
 
-    // Search users in the same company
-    const users = await User.find({
-      companyId: user.companyId,
-      isActive: true,
-      $or: [
-        { firstName: { $regex: q, $options: 'i' } },
-        { lastName: { $regex: q, $options: 'i' } },
-        { email: { $regex: q, $options: 'i' } },
-        { department: { $regex: q, $options: 'i' } }
-      ]
-    }).select('firstName lastName email department role position _id').limit(20);
+  //   // Search users in the same company
+  //   const users = await User.find({
+  //     companyId: user.companyId,
+  //     isActive: true,
+  //     $or: [
+  //       { firstName: { $regex: q, $options: 'i' } },
+  //       { lastName: { $regex: q, $options: 'i' } },
+  //       { email: { $regex: q, $options: 'i' } },
+  //       { department: { $regex: q, $options: 'i' } }
+  //     ]
+  //   }).select('firstName lastName email department role position _id').limit(20);
 
-    res.status(200).json({
-      success: true,
-      data: users
-    });
+  //   res.status(200).json({
+  //     success: true,
+  //     data: users
+  //   });
 
-  } catch (error) {
-    console.error("Search users error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error searching users"
-    });
-  }
+  // } catch (error) {
+  //   console.error("Search users error:", error);
+  //   res.status(500).json({
+  //     success: false,
+  //     message: "Server error searching users"
+  //   });
+  // }
 };

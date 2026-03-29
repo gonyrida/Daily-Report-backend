@@ -20,9 +20,19 @@ const purchaseRequestSchema = new mongoose.Schema(
     },
     version: { // Version number for tracking revisions
       type: Number,
-      default: 1, // Start with version 1
-      min: 1, // Minimum version is 1
+      default: 0, // Start with version 0
+      min: 0, // Minimum version is 0
       required: true
+    },
+    no: {
+      type: Number,
+      required: [true, "NO is required"],
+      min: [0, "NO must be at least 0"],
+    },
+    label: {
+      type: String,
+      required: [true, "Label is required"],
+      trim: true,
     },
     
     // Project Details
@@ -30,6 +40,30 @@ const purchaseRequestSchema = new mongoose.Schema(
       type: String,
       required: [true, "Project name is required"],
       trim: true,
+    },
+    projectFrom: {
+      mainProject: {
+        type: String,
+        // required: [true, "Main project is required"],
+        trim: true,
+      },
+      mainId: {
+        type: String,
+        trim: true,
+        // type: mongoose.Schema.Types.ObjectId,
+        // required: [true, "Main project ID is required"],
+      },
+      subProject: {
+        type: String,
+        // required: [true, "Sub project is required"],
+        trim: true,
+      },
+      subId: {
+        type: String,
+        trim: true,
+        // type: mongoose.Schema.Types.ObjectId,
+        // required: [true, "Sub project ID is required"],
+      }
     },
     purpose: {
       type: String,

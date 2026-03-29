@@ -5,6 +5,7 @@ const {
   validateApproverWorkflow
 } = require("../helpers/validationApproverWorkflow");
 const { createAuditLog } = require("../helpers/createAuditLog");
+const PR_Project = require("../models/projectPRModel");
 
 // Define order of the approval workflow roles
 const ROLE_ORDER = ['checked','verified','approved'];
@@ -18,15 +19,30 @@ exports.createPurchaseRequest = async (req, res) => {
       requesterName,
       requesterDepartment,
       projectName,
+      projectFrom,
       purpose,
       requestDate,
       deliveryPlace,
       categories,
       items,
       priority,
-      status, // NEW: Extract status
-      approvers // NEW: Extract approvers
+      status,
+      approvers
     } = req.body;
+
+    // Comment out for now but will have to apply safe guards to check
+    // if user is allow to post a request asscociated with a project
+    // const projectId = projectFrom?.mainId;
+    // let project = null;
+    // if (projectId) {
+    //   project = await PR_Project.findById(projectId);
+    //   if (!project) {
+    //     return res.status(404).json({
+    //       success: false,
+    //       message: "Project not found"
+    //     });
+    //   }
+    // }
 
     // Validation
     if (status !== 'draft' && (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !deliveryPlace)) {
@@ -77,14 +93,40 @@ exports.createPurchaseRequest = async (req, res) => {
         message: workflowValidation.message
       });
     }
+    
+    const projectId = projectFrom?.mainId;
+    let project = null;
+    let projectCounter = null;
+    if (projectId && status === 'pending') {
+      project = await PR_Project.findByIdAndUpdate(
+        projectId,
+        { $inc: { counter: 1 } }, 
+        { new: true }
+      );
+      projectCounter = project.counter;
+    } else if (projectId && status === 'draft') {
+      projectCounter = 0;
+    } else if (!projectId && status === 'pending') {
+      projectCounter = 1;
+    } else if (!projectId && status === 'draft') {
+      projectCounter = 0;
+    }
 
     // Create purchase request
     const purchaseRequest = new PurchaseRequest({
       requesterName,
       requesterDepartment,
       groupId: null, // Will be set to request ID after creation
-      version: 1, // Start with version 1
+      version: 0, // Start with version 0
+      no: projectCounter,
+      label: `MR #${projectCounter}`,
       projectName,
+      projectFrom: projectFrom || {
+        mainProject: null,
+        mainId: null,
+        subProject: null,
+        subId: null
+      },
       purpose,
       requestDate,
       deliveryPlace,
@@ -586,6 +628,7 @@ exports.updatePurchaseRequest = async (req, res) => {
       requesterName,
       requesterDepartment,
       projectName,
+      projectFrom,
       purpose,
       requestDate,
       deliveryPlace,
@@ -662,10 +705,31 @@ exports.updatePurchaseRequest = async (req, res) => {
       });
     }
 
+    const projectId = projectFrom?.mainId;
+    let project = null;
+    let projectCounter = null;
+    if (projectId && status === 'pending') {
+      project = await PR_Project.findByIdAndUpdate(
+        projectId, 
+        { $inc: { counter: 1 } }, 
+        { new: true }
+      );
+      projectCounter = project.counter;
+    } else if (projectId && status === 'draft') {
+      projectCounter = 0;
+    } else if (!projectId && status === 'pending') {
+      projectCounter = 1;
+    } else if (!projectId && status === 'draft') {
+      projectCounter = 0;
+    }
+
     // Update fields
     purchaseRequest.requesterName = requesterName;
     purchaseRequest.requesterDepartment = requesterDepartment;
+    purchaseRequest.no = projectCounter;
+    purchaseRequest.label = `MR #${projectCounter}`;
     purchaseRequest.projectName = projectName;
+    purchaseRequest.projectFrom = projectFrom;
     purchaseRequest.purpose = purpose;
     purchaseRequest.requestDate = requestDate;
     purchaseRequest.deliveryPlace = deliveryPlace;
@@ -762,6 +826,7 @@ exports.revisedPurchaseRequest = async (req, res) => {
       requesterName,
       requesterDepartment,
       projectName,
+      projectFrom,
       purpose,
       requestDate,
       deliveryPlace,
@@ -804,7 +869,15 @@ exports.revisedPurchaseRequest = async (req, res) => {
       requesterDepartment,
       groupId: originalRequest.groupId, // Keep same groupId as original
       version: (originalRequest.version || 1) + 1, // Increment version
+      no: originalRequest.no,
+      label: `MR #${originalRequest.no} (R${(originalRequest.version || 0) + 1})`,
       projectName,
+      projectFrom: projectFrom || {
+        mainProject: null,
+        mainId: null,
+        subProject: null,
+        subId: null
+      },
       purpose,
       requestDate,
       deliveryPlace,
