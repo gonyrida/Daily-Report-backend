@@ -198,21 +198,15 @@ router.patch('/:id/overall-progress', async (req, res) => {
     const userId = req.user.userId;
     const updateData = req.body;
 
-    console.log(`🔧 DEBUG ROUTE: PATCH /api/weekly-reports/${id}/overall-progress`);
-    console.log(`🔧 DEBUG ROUTE: userId=${userId}`);
-    console.log(`🔧 DEBUG ROUTE: updateData=`, JSON.stringify(updateData, null, 2));
-
     const result = await weeklyReportService.updateSection(id, userId, 'overallProgress', updateData);
 
     if (result.success) {
-      console.log(`✅ DEBUG ROUTE: Successfully updated overall progress`);
       res.status(200).json({
         success: true,
         data: result.data,
         message: 'Overall progress section updated successfully'
       });
     } else {
-      console.log(`❌ DEBUG ROUTE: Failed to update overall progress - ${result.error}`);
       res.status(400).json({
         success: false,
         error: result.error,
@@ -269,21 +263,15 @@ router.patch('/:id/master-schedule', async (req, res) => {
     const userId = req.user.userId;
     const updateData = req.body;
 
-    console.log(`🔧 DEBUG ROUTE: PATCH /api/weekly-reports/${id}/master-schedule`);
-    console.log(`🔧 DEBUG ROUTE: userId=${userId}`);
-    console.log(`🔧 DEBUG ROUTE: updateData=`, JSON.stringify(updateData, null, 2));
-
     const result = await weeklyReportService.updateSection(id, userId, 'masterSchedule', updateData);
 
     if (result.success) {
-      console.log(`✅ DEBUG ROUTE: Successfully updated master schedule`);
       res.status(200).json({
         success: true,
         data: result.data,
         message: 'Master schedule section updated successfully'
       });
     } else {
-      console.log(`❌ DEBUG ROUTE: Failed to update master schedule - ${result.error}`);
       res.status(400).json({
         success: false,
         error: result.error,
