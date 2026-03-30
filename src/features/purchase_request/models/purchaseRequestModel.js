@@ -24,6 +24,10 @@ const purchaseRequestSchema = new mongoose.Schema(
       min: 0, // Minimum version is 0
       required: true
     },
+    isLatest: {
+      type: Boolean,
+      default: true
+    },
     no: {
       type: Number,
       required: [true, "NO is required"],
@@ -145,6 +149,18 @@ const purchaseRequestSchema = new mongoose.Schema(
       required: false, // Remove required since middleware calculates it
       min: [0, "Grand total must be non-negative"],
       default: 0,
+    },
+
+    // Description and Remarks
+    requestDescription: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    requestRemarks: {
+      type: String,
+      trim: true,
+      default: null,
     },
     
     // NEW: Approval Workflow Array

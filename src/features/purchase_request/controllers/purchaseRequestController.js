@@ -863,12 +863,17 @@ exports.revisedPurchaseRequest = async (req, res) => {
       });
     }
 
+    await PurchaseRequest.updateMany(
+      { groupId: originalRequest.groupId },
+      { isLatest: false }
+    );
+
     // Create revised request with same groupId but incremented version
     const revisedRequest = new PurchaseRequest({
       requesterName,
       requesterDepartment,
       groupId: originalRequest.groupId, // Keep same groupId as original
-      version: (originalRequest.version || 1) + 1, // Increment version
+      version: (originalRequest.version || 0) + 1, // Increment version
       no: originalRequest.no,
       label: `MR #${originalRequest.no} (R${(originalRequest.version || 0) + 1})`,
       projectName,
@@ -968,6 +973,84 @@ exports.revisedPurchaseRequest = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error revising purchase request"
+    });
+  }
+};
+
+// @desc    Get purchase requests summary for a project
+// @route   GET /api/purchase-requests/pr-summary/:id
+// @access  Private
+exports.getProjectPurchaseRequestsSummary = async (req, res) => {
+  try {
+    const { id } = req.params; // Extract project ID from params
+
+    // Find all purchase requests for the project with isLatest: true, sorted by no field
+    const reports = await PurchaseRequest.find({ 
+      'projectFrom.mainId': id, 
+      isLatest: true 
+    })
+    .sort({ no: 1 }) // Sort by no field ascending
+    .populate('createdBy', 'firstName lastName email')
+    .populate('approvalWorkflow.approver', 'firstName lastName email');
+
+    // Calculate report count
+    const reportCount = reports.length;
+
+    // Calculate cumulative total of grandTotal field
+    const cumulativeTotal = reports.reduce((sum, report) => {
+      return sum + (report.grandTotal || 0);
+    }, 0);
+
+    // Find the PR_Project to get budgetSettings and purposes
+    const projectData = await PR_Project.findById(id)
+      .select('budgetSettings purposes')
+      .lean();
+
+    // Calculate materialsActual - group totals by purpose
+    const materialsActual = {};
+    
+    // Initialize materialsActual with project purposes
+    if (projectData && projectData.purposes) {
+      projectData.purposes.forEach(purpose => {
+        materialsActual[purpose.name] = {
+          purpose: purpose.name,
+          actualTotal: 0
+        };
+      });
+    }
+
+    // Calculate actual totals for each purpose from reports
+    reports.forEach(report => {
+      if (report.purpose && materialsActual[report.purpose]) {
+        materialsActual[report.purpose].actualTotal += (report.grandTotal || 0);
+      }
+    });
+
+    // Convert to array format
+    const materialsActualArray = Object.values(materialsActual);
+
+    // Create summary object
+    const summary = {
+      totalSpend: cumulativeTotal,
+      reportCount: reportCount,
+      project: projectData || null, // Include project data with budgetSettings and purposes
+      materialsActual: materialsActualArray // Include materialsActual accumulation
+    };
+
+    res.status(200).json({
+      success: true,
+      data: {
+        reports: reports,
+        summary: summary
+      },
+      message: `Found ${reportCount} purchase requests for project with total spend of ${cumulativeTotal}`
+    });
+
+  } catch (error) {
+    console.error("Get project purchase requests summary error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error retrieving project purchase requests summary"
     });
   }
 };

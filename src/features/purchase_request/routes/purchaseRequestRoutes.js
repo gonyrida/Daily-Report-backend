@@ -11,7 +11,8 @@ const {
   getMyPurchaseRequests,
   updatePurchaseRequest,
   getPendingApprovals,
-  revisedPurchaseRequest
+  revisedPurchaseRequest,
+  getProjectPurchaseRequestsSummary
 } = require("../controllers/purchaseRequestController");
 const {
   getAuditLogs,
@@ -38,6 +39,7 @@ router.post("/pr-projects", authenticateToken, createPRProject);
 router.get("/pr-projects/:id", authenticateToken, getPRProjectById);
 router.put("/pr-projects/:id", authenticateToken, updatePRProject);
 router.delete("/pr-projects/:id", authenticateToken, deletePRProject);
+router.get("/pr-summary/:id", authenticateToken, getProjectPurchaseRequestsSummary);
 
 // ../controllers/purchaseRequestController (2)
 router.get("/my-requests", authenticateToken, getMyPurchaseRequests);
