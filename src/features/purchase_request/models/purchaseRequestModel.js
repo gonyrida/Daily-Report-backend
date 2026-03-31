@@ -163,6 +163,42 @@ const purchaseRequestSchema = new mongoose.Schema(
       default: null,
     },
     
+    // Attachments Array
+    attachments: [{
+      filename: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      fileType: {
+        type: String,
+        required: true,
+        trim: true,
+      },
+      fileSize: {
+        type: Number,
+        required: true,
+        min: [0, "File size must be non-negative"],
+      },
+      data: {
+        type: Buffer,
+        required: false, // Optional for non-binary files
+      },
+      base64: {
+        type: String,
+        required: false, // Optional, for images
+      },
+      uploadedAt: {
+        type: Date,
+        default: Date.now,
+      },
+      status: {
+        type: String,
+        enum: ["uploading", "completed", "error"],
+        default: "completed",
+      },
+    }],
+    
     // NEW: Approval Workflow Array
     approvalWorkflow: [{
       approver: {

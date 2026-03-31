@@ -7,6 +7,41 @@ const {
 const { createAuditLog } = require("../helpers/createAuditLog");
 const PR_Project = require("../models/projectPRModel");
 
+// Normalize attachment fileSize from formatted strings to bytes numbers
+function parseAttachmentFileSize(fileSize) {
+  if (fileSize === null || fileSize === undefined) return 0;
+  if (typeof fileSize === 'number') return fileSize;
+  if (typeof fileSize !== 'string') return 0;
+
+  const normalized = fileSize.trim().toUpperCase();
+  const parts = normalized.split(' ');
+  if (parts.length === 0) return 0;
+
+  let value = parseFloat(parts[0].replace(/,/g, ''));
+  if (isNaN(value)) return 0;
+
+  const unit = parts[1] || 'B';
+  if (unit.startsWith('KB')) return Math.round(value * 1024);
+  if (unit.startsWith('MB')) return Math.round(value * 1024 * 1024);
+  if (unit.startsWith('GB')) return Math.round(value * 1024 * 1024 * 1024);
+  if (unit.startsWith('TB')) return Math.round(value * 1024 * 1024 * 1024 * 1024);
+  return Math.round(value);
+}
+
+function normalizeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return [];
+  return attachments.map(att => {
+    const fileSize = parseAttachmentFileSize(att.fileSize);
+    const bufferData = att.data || (att.base64 ? Buffer.from(att.base64, 'base64') : undefined);
+    return {
+      ...att,
+      fileSize,
+      data: bufferData,
+      base64: att.base64 || att.imageData || null,
+    };
+  });
+}
+
 // Define order of the approval workflow roles
 const ROLE_ORDER = ['checked','verified','approved'];
 
@@ -27,7 +62,10 @@ exports.createPurchaseRequest = async (req, res) => {
       items,
       priority,
       status,
-      approvers
+      approvers,
+      requestDescription,
+      requestRemarks,
+      attachments
     } = req.body;
 
     // Comment out for now but will have to apply safe guards to check
@@ -93,7 +131,10 @@ exports.createPurchaseRequest = async (req, res) => {
         message: workflowValidation.message
       });
     }
-    
+
+    // Normalize attachments and file size from frontend metadata
+    const normalizedAttachments = normalizeAttachments(attachments);
+
     const projectId = projectFrom?.mainId;
     let project = null;
     let projectCounter = null;
@@ -137,6 +178,9 @@ exports.createPurchaseRequest = async (req, res) => {
         services: false
       },
       items,
+      requestDescription,
+      requestRemarks,
+      attachments: normalizedAttachments,
       status: status || 'pending', // default to 'Pending' if not provided
       approvalWorkflow: [
         {
@@ -636,7 +680,10 @@ exports.updatePurchaseRequest = async (req, res) => {
       items,
       approvers,
       priority,
-      status
+      status,
+      requestDescription,
+      requestRemarks,
+      attachments
     } = req.body;
 
     const user = await User.findById(req.user.userId);
@@ -698,6 +745,8 @@ exports.updatePurchaseRequest = async (req, res) => {
       }
     }
 
+    const normalizedAttachments = normalizeAttachments(attachments);
+
     if (purchaseRequest.status === 'pending' && status === 'draft') {
       return res.status(400).json({
         success: false,
@@ -708,7 +757,7 @@ exports.updatePurchaseRequest = async (req, res) => {
     const projectId = projectFrom?.mainId;
     let project = null;
     let projectCounter = null;
-    if (projectId && status === 'pending') {
+    if (projectId && status === 'pending' && purchaseRequest.status === 'draft') {
       project = await PR_Project.findByIdAndUpdate(
         projectId, 
         { $inc: { counter: 1 } }, 
@@ -723,6 +772,29 @@ exports.updatePurchaseRequest = async (req, res) => {
       projectCounter = 0;
     }
 
+    if (projectId) {
+      if (status === 'pending' && purchaseRequest.status === 'draft') {
+        project = await PR_Project.findByIdAndUpdate(
+          projectId, 
+          { $inc: { counter: 1 } }, 
+          { new: true }
+        );
+        projectCounter = project.counter;
+      } else if (status === 'pending' && purchaseRequest.status === 'pending') {
+        projectCounter = purchaseRequest.no;
+      } else if (status === 'draft' && purchaseRequest.status === 'draft') {
+        projectCounter = 0;
+      }
+    } else {
+      if (status === 'pending' && purchaseRequest.status === 'draft') {
+        projectCounter = 1;
+      } else if (status === 'pending' && purchaseRequest.status === 'pending') {
+        projectCounter = purchaseRequest.no;
+      } else if (status === 'draft' && purchaseRequest.status === 'draft') {
+        projectCounter = 0;
+      }
+    }
+
     // Update fields
     purchaseRequest.requesterName = requesterName;
     purchaseRequest.requesterDepartment = requesterDepartment;
@@ -735,6 +807,9 @@ exports.updatePurchaseRequest = async (req, res) => {
     purchaseRequest.deliveryPlace = deliveryPlace;
     purchaseRequest.categories = categories;
     purchaseRequest.items = items;
+    purchaseRequest.requestDescription = requestDescription;
+    purchaseRequest.requestRemarks = requestRemarks;
+    purchaseRequest.attachments = attachments;
     if (approvers) {
       // Update the approvalWorkflow with new approver IDs
       const checkedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'checked');
@@ -745,6 +820,9 @@ exports.updatePurchaseRequest = async (req, res) => {
       if (verifiedStep) verifiedStep.approver = approvers.verifiedBy || null;
       if (approvedStep) approvedStep.approver = approvers.approvedBy || null;
     }
+    purchaseRequest.requestDescription = requestDescription;
+    purchaseRequest.requestRemarks = requestRemarks;
+    purchaseRequest.attachments = normalizedAttachments;
     purchaseRequest.priority = priority;
     if (purchaseRequest.status === 'draft' && status === 'pending') {
       purchaseRequest.status = status;
@@ -834,7 +912,10 @@ exports.revisedPurchaseRequest = async (req, res) => {
       items,
       approvers,
       notes,
-      priority
+      priority,
+      requestDescription,
+      requestRemarks,
+      attachments
     } = req.body;
 
     const user = await User.findById(req.user.userId);
@@ -844,6 +925,8 @@ exports.revisedPurchaseRequest = async (req, res) => {
         message: "User not found"
       });
     }
+
+    const normalizedAttachments = normalizeAttachments(attachments);
 
     // Find original request
     const originalRequest = await PurchaseRequest.findById(req.params.id);
@@ -860,6 +943,16 @@ exports.revisedPurchaseRequest = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: workflowValidation.message
+      });
+    }
+
+    // Process attachments: convert base64 to Buffer if needed
+    if (attachments && Array.isArray(attachments)) {
+      attachments.forEach(attachment => {
+        if (attachment.base64 && !attachment.data) {
+          // Convert base64 to Buffer
+          attachment.data = Buffer.from(attachment.base64, 'base64');
+        }
       });
     }
 
@@ -893,6 +986,9 @@ exports.revisedPurchaseRequest = async (req, res) => {
         services: false
       },
       items,
+      requestDescription,
+      requestRemarks,
+      attachments: normalizedAttachments,
       status: 'pending', // Reset to pending for revision
       priority: priority || 'medium',
       companyId: user.companyId,
