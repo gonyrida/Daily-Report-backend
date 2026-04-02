@@ -32,7 +32,12 @@ function normalizeAttachments(attachments) {
   if (!Array.isArray(attachments)) return [];
   return attachments.map(att => {
     const fileSize = parseAttachmentFileSize(att.fileSize);
-    const bufferData = att.data || (att.base64 ? Buffer.from(att.base64, 'base64') : undefined);
+    // Handle data URL format: data:mime/type;base64,actualData
+    let base64Data = att.base64;
+    if (base64Data && base64Data.includes(',')) {
+      base64Data = base64Data.split(',')[1];
+    }
+    const bufferData = att.data || (base64Data ? Buffer.from(base64Data, 'base64') : undefined);
     return {
       ...att,
       fileSize,
@@ -57,6 +62,7 @@ exports.createPurchaseRequest = async (req, res) => {
       projectFrom,
       purpose,
       requestDate,
+      dueDate,
       deliveryPlace,
       categories,
       items,
@@ -83,7 +89,7 @@ exports.createPurchaseRequest = async (req, res) => {
     // }
 
     // Validation
-    if (status !== 'draft' && (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !deliveryPlace)) {
+    if (status !== 'draft' && (!requesterName || !requesterDepartment || !projectName || !purpose || !requestDate || !dueDate || !deliveryPlace)) {
       return res.status(400).json({
         success: false,
         message: "All required fields must be provided for posted requests"
@@ -170,6 +176,7 @@ exports.createPurchaseRequest = async (req, res) => {
       },
       purpose,
       requestDate,
+      dueDate,
       deliveryPlace,
       categories: categories || {
         construction: false,
@@ -192,6 +199,7 @@ exports.createPurchaseRequest = async (req, res) => {
         },
         {
           approver: approvers?.checkedBy || null,
+          backupApprover: approvers?.backupCheckedBy || null,
           role: 'checked',
           status: 'pending',
           timestamp: null,
@@ -199,6 +207,7 @@ exports.createPurchaseRequest = async (req, res) => {
         },
         {
           approver: approvers?.verifiedBy || null,
+          backupApprover: approvers?.backupVerifiedBy || null,
           role: 'verified', 
           status: 'pending',
           timestamp: null,
@@ -206,6 +215,7 @@ exports.createPurchaseRequest = async (req, res) => {
         },
         {
           approver: approvers?.approvedBy || null,
+          backupApprover: approvers?.backupApprovedBy || null,
           role: 'approved',
           status: 'pending', 
           timestamp: null,
@@ -220,6 +230,7 @@ exports.createPurchaseRequest = async (req, res) => {
     // Log creation action
     await createAuditLog(
       purchaseRequest._id,
+      purchaseRequest.label,
       user._id,
       'prepared',
       user.department || 'unknown',
@@ -423,6 +434,7 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
       const approverUser = await User.findById(approverId);
       await createAuditLog(
         purchaseRequest._id,
+        purchaseRequest.label,
         approverId,
         role,
         approverUser?.department || 'unknown',
@@ -467,6 +479,7 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
     const approverUser = await User.findById(approverId);
     await createAuditLog(
       purchaseRequest._id,
+      purchaseRequest.label,
       approverId,
       role,
       approverUser?.department || 'unknown',
@@ -549,6 +562,7 @@ exports.deletePurchaseRequest = async (req, res) => {
     // Log cancellation action
     await createAuditLog(
       purchaseRequest._id,
+      purchaseRequest.label,
       user._id,
       'prepared',
       user.department || 'unknown',
@@ -675,6 +689,7 @@ exports.updatePurchaseRequest = async (req, res) => {
       projectFrom,
       purpose,
       requestDate,
+      dueDate,
       deliveryPlace,
       categories,
       items,
@@ -804,6 +819,7 @@ exports.updatePurchaseRequest = async (req, res) => {
     purchaseRequest.projectFrom = projectFrom;
     purchaseRequest.purpose = purpose;
     purchaseRequest.requestDate = requestDate;
+    purchaseRequest.dueDate = dueDate;
     purchaseRequest.deliveryPlace = deliveryPlace;
     purchaseRequest.categories = categories;
     purchaseRequest.items = items;
@@ -811,14 +827,23 @@ exports.updatePurchaseRequest = async (req, res) => {
     purchaseRequest.requestRemarks = requestRemarks;
     purchaseRequest.attachments = attachments;
     if (approvers) {
-      // Update the approvalWorkflow with new approver IDs
+      // Update the approvalWorkflow with new approver IDs and backup approvers
       const checkedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'checked');
       const verifiedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'verified');
       const approvedStep = purchaseRequest.approvalWorkflow.find(step => step.role === 'approved');
       
-      if (checkedStep) checkedStep.approver = approvers.checkedBy || null;
-      if (verifiedStep) verifiedStep.approver = approvers.verifiedBy || null;
-      if (approvedStep) approvedStep.approver = approvers.approvedBy || null;
+      if (checkedStep) {
+        checkedStep.approver = approvers.checkedBy || null;
+        checkedStep.backupApprover = approvers.backupCheckedBy || null;
+      }
+      if (verifiedStep) {
+        verifiedStep.approver = approvers.verifiedBy || null;
+        verifiedStep.backupApprover = approvers.backupVerifiedBy || null;
+      }
+      if (approvedStep) {
+        approvedStep.approver = approvers.approvedBy || null;
+        approvedStep.backupApprover = approvers.backupApprovedBy || null;
+      }
     }
     purchaseRequest.requestDescription = requestDescription;
     purchaseRequest.requestRemarks = requestRemarks;
@@ -831,6 +856,7 @@ exports.updatePurchaseRequest = async (req, res) => {
     // Log modification action
     await createAuditLog(
       purchaseRequest._id,
+      purchaseRequest.label,
       user._id,
       'prepared',
       user.department || 'unknown',
@@ -907,6 +933,7 @@ exports.revisedPurchaseRequest = async (req, res) => {
       projectFrom,
       purpose,
       requestDate,
+      dueDate,
       deliveryPlace,
       categories,
       items,
@@ -917,6 +944,8 @@ exports.revisedPurchaseRequest = async (req, res) => {
       requestRemarks,
       attachments
     } = req.body;
+
+    const { comment } = req.query;
 
     const user = await User.findById(req.user.userId);
     if (!user) {
@@ -978,6 +1007,7 @@ exports.revisedPurchaseRequest = async (req, res) => {
       },
       purpose,
       requestDate,
+      dueDate,
       deliveryPlace,
       categories: categories || {
         construction: false,
@@ -1003,6 +1033,7 @@ exports.revisedPurchaseRequest = async (req, res) => {
         },
         {
           approver: approvers?.checkedBy || null,
+          backupApprover: approvers?.backupCheckedBy || null,
           role: 'checked',
           status: 'pending',
           timestamp: null,
@@ -1010,6 +1041,7 @@ exports.revisedPurchaseRequest = async (req, res) => {
         },
         {
           approver: approvers?.verifiedBy || null,
+          backupApprover: approvers?.backupVerifiedBy || null,
           role: 'verified',
           status: 'pending',
           timestamp: null,
@@ -1017,6 +1049,7 @@ exports.revisedPurchaseRequest = async (req, res) => {
         },
         {
           approver: approvers?.approvedBy || null,
+          backupApprover: approvers?.backupApprovedBy || null,
           role: 'approved',
           status: 'pending',
           timestamp: null,
@@ -1031,23 +1064,25 @@ exports.revisedPurchaseRequest = async (req, res) => {
     // Log revision action for original request
     await createAuditLog(
       originalRequest._id,
+      originalRequest.label,
       user._id,
       'prepared',
       user.department || 'unknown',
       'revised',
       'revised',
-      notes || 'Request revised - new version created'
+      comment || 'Request revised - new version created'
     );
 
     // Log creation action for revised request
     await createAuditLog(
       revisedRequest._id,
+      revisedRequest.label,
       user._id,
       'prepared',
       user.department || 'unknown',
       'completed',
       'created',
-      'Revised request created'
+      `Revised request MR #${revisedRequest.no} (R-${revisedRequest.version}) created based on MR #${originalRequest.no} (R-${originalRequest.version})`
     );
 
     // Update original request status to indicate it has been revised

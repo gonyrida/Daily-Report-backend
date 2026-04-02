@@ -8,6 +8,12 @@ const requestAuditLogSchema = new mongoose.Schema({
     required: true
   },
 
+  requestLabel: {
+    type: String,
+    required: [true, "Request label is required"],
+    trim: true,
+  },
+
   // User who performed the action
   approver: {
     type: mongoose.Schema.Types.ObjectId,

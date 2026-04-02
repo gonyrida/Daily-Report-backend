@@ -1,9 +1,10 @@
 const RequestAuditLog = require("../models/requestAuditLogModel");
 
-const createAuditLog = async (requestId, approver, role, department, status, actionType, notes = null, previousState = null, newState = null) => {
+const createAuditLog = async (requestId, requestLabel, approver, role, department, status, actionType, notes = null, previousState = null, newState = null) => {
   try {
     const auditLog = new RequestAuditLog({
       requestId,
+      requestLabel,
       approver,
       role,
       department,

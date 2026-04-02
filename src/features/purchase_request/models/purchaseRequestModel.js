@@ -78,6 +78,10 @@ const purchaseRequestSchema = new mongoose.Schema(
       type: Date,
       required: [true, "Request date is required"],
     },
+    dueDate: {
+      type: Date,
+      required: [true, "Due date is required"],
+    },
     deliveryPlace: {
       type: String,
       required: [true, "Delivery place is required"],
@@ -205,6 +209,11 @@ const purchaseRequestSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",
         required: true
+      },
+      backupApprover: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null
       },
       role: {
         type: String,
