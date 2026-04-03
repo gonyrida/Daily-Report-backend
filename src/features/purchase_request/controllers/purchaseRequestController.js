@@ -6,6 +6,7 @@ const {
 } = require("../helpers/validationApproverWorkflow");
 const { createAuditLog } = require("../helpers/createAuditLog");
 const PR_Project = require("../models/projectPRModel");
+const mongoose = require('mongoose');
 
 // Normalize attachment fileSize from formatted strings to bytes numbers
 function parseAttachmentFileSize(fileSize) {
@@ -274,39 +275,102 @@ exports.getPurchaseRequests = async (req, res) => {
       });
     }
 
-    const { page = 1, limit = 10, status, search } = req.query;
+    const userId = new mongoose.Types.ObjectId(req.user.userId);
+    const userRole = req.user.role;
+    const companyId = new mongoose.Types.ObjectId(req.user.companyId);
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
-    // Build query
-    let query = {
-      companyId: user.companyId,
-      isDeleted: false,
-      status: { $ne: 'draft' }  // exclude drafts
-    };
+    // Extract filter parameters (handle __all__ as no filter)
+    const { status, subProject, purpose, requester } = req.query;
+    const effectiveStatus = status && status !== '__all__' ? status : null;
+    const effectiveSubProject = subProject && subProject !== '__all__' ? subProject : null;
+    const effectivePurpose = purpose && purpose !== '__all__' ? purpose : null;
+    const effectiveRequester = requester && requester !== '__all__' ? requester : null;
 
-    // Comment out the Filter by status if provided for future usage
-    // if (status) {
-      // query.status = status;
-    // }
+    // --- DYNAMIC FILTER LOGIC ---
+    let projectMatch = {};
 
-    // Search functionality
-    if (search) {
-      query.$or = [
-        { projectName: { $regex: search, $options: 'i' } },
-        { purpose: { $regex: search, $options: 'i' } },
-        { requesterName: { $regex: search, $options: 'i' } }
-      ];
+    if (userRole === 'admin') {
+      // Admin sees everything! We leave the match object empty {}.
+      projectMatch = {}; 
+    } else {
+      // Regular user only sees joined or public projects.
+      projectMatch = { 
+        $or: [
+          { 'members._id': userId }, 
+          { visibility: 'public' },
+          { companyId: companyId }
+        ] 
+      };
     }
 
-    // Get purchase requests
-    const purchaseRequests = await PurchaseRequest.find(query)
-      .populate('createdBy', 'firstName lastName email approvalWorkflow')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
+    const accessibleProjects = await PR_Project.find(projectMatch)
+      .select('_id')
+      .lean();
 
-    // Get total count for pagination
-    const total = await PurchaseRequest.countDocuments(query);
+    const projectIds = accessibleProjects.map(p => p._id);
+
+    // Get total count for pagination with filters
+    const countQuery = {
+      "projectFrom.mainId": { $in: projectIds },
+      ...(effectiveStatus && { status: effectiveStatus }),
+      ...(effectivePurpose && { purpose: { $regex: effectivePurpose, $options: 'i' } }),
+      ...(effectiveRequester && { requesterName: { $regex: effectiveRequester, $options: 'i' } }),
+      ...(effectiveSubProject && { 'projectFrom.subProject': { $regex: effectiveSubProject, $options: 'i' } })
+    };
+    const totalCount = await PurchaseRequest.countDocuments(countQuery);
+
+    const purchaseRequests = await PR_Project.aggregate([
+      { $match: { _id: { $in: projectIds } } },
+      {
+        $lookup: {
+          from: 'purchaserequests',
+          localField: '_id',
+          foreignField: 'projectFrom.mainId',
+          as: 'purchaseRequests'
+        }
+      },
+      { $unwind: '$purchaseRequests' },
+      {
+        $match: {
+          ...(effectiveStatus && { 'purchaseRequests.status': effectiveStatus }),
+          ...(effectivePurpose && { 'purchaseRequests.purpose': { $regex: effectivePurpose, $options: 'i' } }),
+          ...(effectiveRequester && { 'purchaseRequests.requesterName': { $regex: effectiveRequester, $options: 'i' } }),
+          ...(effectiveSubProject && { 'purchaseRequests.projectFrom.subProject': { $regex: effectiveSubProject, $options: 'i' } })
+        }
+      },
+      { $sort: { "purchaseRequests.createdAt": -1 } },
+      { $skip: skip }, // Add skip for pagination
+      { $limit: limit },
+      {
+        $project: {
+          _id: `$purchaseRequests._id`,
+          label: `$purchaseRequests.label`,
+          projectName: `$purchaseRequests.projectName`,
+          requesterName: `$purchaseRequests.requesterName`,
+          categories: `$purchaseRequests.categories`,
+          purpose: `$purchaseRequests.purpose`,
+          items: {
+            $map: {
+              input: "$purchaseRequests.items",
+              as: "item",
+              in: {
+                description: "$$item.description",
+                // We simply DO NOT list 'reference' here. 
+                // This keeps the item object but removes the Base64 string.
+              }
+            }
+          },
+          grandTotal: "$purchaseRequests.grandTotal",
+          status: "$purchaseRequests.status", 
+          approvalWorkflow: "$purchaseRequests.approvalWorkflow",
+          createdAt: "$purchaseRequests.createdAt",
+        }
+      },
+    ]);
 
     res.status(200).json({
       success: true,
@@ -314,8 +378,8 @@ exports.getPurchaseRequests = async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        total,
-        pages: Math.ceil(total / limit)
+        totalCount,
+        pages: totalCount > 0 ? Math.ceil(totalCount / limit) : 1
       }
     });
 
@@ -625,7 +689,7 @@ exports.getMyPurchaseRequests = async (req, res) => {
       });
     }
 
-    const { page = 1, limit = 10, status, search } = req.query;
+    const { page = 1, limit = 10, status, subProject, purpose } = req.query;
     const skip = (page - 1) * limit;
 
     // Query for user's requests only
@@ -640,17 +704,20 @@ exports.getMyPurchaseRequests = async (req, res) => {
       query.status = status;
     }
 
-    // Search functionality
-    if (search) {
-      query.$or = [
-        { projectName: { $regex: search, $options: 'i' } },
-        { purpose: { $regex: search, $options: 'i' } },
-        { requesterName: { $regex: search, $options: 'i' } }
-      ];
+    // Filter by subProject name if provided (from projectFrom.subProject)
+    if (subProject) {
+      query['projectFrom.subProject'] = { $regex: subProject, $options: 'i' };
+    }
+
+    // Filter by purpose if provided
+    if (purpose) {
+      query.purpose = { $regex: purpose, $options: 'i' };
     }
 
     const purchaseRequests = await PurchaseRequest.find(query)
-      .populate('createdBy', 'firstName lastName email approvalWorkflow')
+      .select('_id projectName requestDate label categories purpose items.description grandTotal status createdAt approvalWorkflow')
+      // .populate('createdBy', 'firstName lastName email approvalWorkflow')
+      .lean()
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit));
@@ -895,11 +962,23 @@ exports.getPendingApprovals = async (req, res) => {
       });
     }
 
+    // Pagination setup
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+
+    // Extract filter parameters (handle __all__ as no filter)
+    const { status, subProject, purpose, requester } = req.query;
+    const effectiveStatus = status && status !== '__all__' ? status : null;
+    const effectiveSubProject = subProject && subProject !== '__all__' ? subProject : null;
+    const effectivePurpose = purpose && purpose !== '__all__' ? purpose : null;
+    const effectiveRequester = requester && requester !== '__all__' ? requester : null;
+
     // Find requests where approvalWorkflow contains this user as approver/admin and status is pending
-    const query = {
+    let query = {
       companyId: user.companyId,
       isDeleted: false,
-      status: { $nin: ['draft', 'rejected'] },
+      status: { $nin: ['draft'] },  // exclude drafts only
       approvalWorkflow: {
         $elemMatch: {
           approver: user._id,
@@ -908,12 +987,39 @@ exports.getPendingApprovals = async (req, res) => {
       }
     };
 
+    // Apply additional filters
+    if (effectiveStatus) {
+      query.status = effectiveStatus;
+    }
+    if (effectivePurpose) {
+      query.purpose = { $regex: effectivePurpose, $options: 'i' };
+    }
+    if (effectiveRequester) {
+      query.requesterName = { $regex: effectiveRequester, $options: 'i' };
+    }
+    if (effectiveSubProject) {
+      query['projectFrom.subProject'] = { $regex: effectiveSubProject, $options: 'i' };
+    }
+
+    // Get total count for pagination
+    const totalCount = await PurchaseRequest.countDocuments(query);
+
     const requests = await PurchaseRequest.find(query)
-      .populate('createdBy', 'firstName lastName email approvalWorkflow')
+      .select('label projectName requesterName categories purpose items.description grandTotal approvalWorkflow createdAt status')
+      .lean()
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     res.status(200).json({
       success: true,
-      data: requests
+      data: requests,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: totalCount,
+        pages: totalCount > 0 ? Math.ceil(totalCount / limit) : 1
+      }
     });
   } catch (error) {
     console.error("Get pending approvals error:", error);
@@ -1121,8 +1227,8 @@ exports.getProjectPurchaseRequestsSummary = async (req, res) => {
       isLatest: true 
     })
     .sort({ no: 1 }) // Sort by no field ascending
-    .populate('createdBy', 'firstName lastName email')
-    .populate('approvalWorkflow.approver', 'firstName lastName email');
+    .select('_id label no version status purpose requestDescription requestRemarks grandTotal items.description')
+    .lean();
 
     // Calculate report count
     const reportCount = reports.length;

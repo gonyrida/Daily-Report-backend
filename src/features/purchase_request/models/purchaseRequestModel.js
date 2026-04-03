@@ -52,9 +52,8 @@ const purchaseRequestSchema = new mongoose.Schema(
         trim: true,
       },
       mainId: {
-        type: String,
+        type: mongoose.Schema.Types.ObjectId,
         trim: true,
-        // type: mongoose.Schema.Types.ObjectId,
         // required: [true, "Main project ID is required"],
       },
       subProject: {

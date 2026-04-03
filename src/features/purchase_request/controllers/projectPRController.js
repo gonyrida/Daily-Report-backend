@@ -202,6 +202,8 @@ exports.getPRProjects = async (req, res) => {
       pipeline.push(
         {
           $project: {
+            _id: 1,
+            name: 1,
             createdAt: 1,
             parentProjectCode: "$projectCode",
             // We only keep purposes as they are
