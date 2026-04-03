@@ -66,6 +66,7 @@ const weeklyReportSchema = new mongoose.Schema({
       weekNumber: String,
       dateRange: String,
       coverImage: String,
+      clientLogo: String,
       projectTitle: String,
       employer: String,
       contractorName: { type: String, default: "Cambodian Advanced Construction Project Management (CACPM) Co., Ltd" }

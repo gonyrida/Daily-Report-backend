@@ -243,11 +243,7 @@ const updateReport = async (reportId, userId, updateData) => {
       };
     }
 
-    // DEBUG: Log incoming HSES data
-    if (updateData.sections?.hses) {
-      console.log('🔍 BACKEND updateReport - Incoming HSES data:', JSON.stringify(updateData.sections.hses, null, 2));
-    }
-
+  
     // Optimistic locking check
     if (updateData.version && existingReport.version !== updateData.version) {
       return {
@@ -1346,14 +1342,16 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
       };
     }
 
-    // Add project filter - exact match
+    // Add project filter - case-insensitive regex match (consistent with personal reports)
     if (projectFilter) {
       searchQuery = {
         $and: [
           searchQuery,
-          { projectName: projectFilter }
+          { projectName: new RegExp(projectFilter, 'i') }
         ]
       };
+      console.log(`🔍 Company Reports Filter - projectFilter: "${projectFilter}"`);
+      console.log(`🔍 Final searchQuery:`, JSON.stringify(searchQuery, null, 2));
     }
 
     const [reports, total] = await Promise.all([
@@ -1364,6 +1362,8 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
         .populate('userId', 'firstName lastName email'),
       WeeklyReport.countDocuments(searchQuery)
     ]);
+    
+    console.log(`🔍 Company Reports Result: Found ${reports.length} reports (total: ${total})`);
     
     return {
       success: true,

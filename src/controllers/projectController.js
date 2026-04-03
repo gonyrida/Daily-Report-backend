@@ -66,14 +66,23 @@ exports.getUserProjects = async (req, res) => {
     // 🚀 NEW: Calculate submitted report count for each project
     const projectsWithSubmittedCount = await Promise.all(
       projects.map(async (project) => {
-        const submittedCount = await DailyReport.countDocuments({
-          projectName: project.name,
-          status: "submitted"
-        });
+        const DailyReport = require('../models/dailyReportModel');
+        const WeeklyReport = require('../models/WeeklyReport');
+        
+        const [dailySubmittedCount, weeklySubmittedCount] = await Promise.all([
+          DailyReport.countDocuments({
+            projectName: project.name,
+            status: "submitted"
+          }),
+          WeeklyReport.countDocuments({
+            projectName: project.name,
+            status: "submitted"
+          })
+        ]);
         
         return {
           ...project.toObject(),
-          reportCount: submittedCount  // ← Override with submitted count
+          reportCount: dailySubmittedCount + weeklySubmittedCount  // Count both daily and weekly reports
         };
       })
     );
@@ -147,11 +156,14 @@ exports.updateProject = async (req, res) => {
     );
     
     // 🚀 NEW: Update all reports with the old project name
-    let updateResult = null;
+    let dailyUpdateResult = null;
+    let weeklyUpdateResult = null;
     if (oldName !== newName) {
       const DailyReport = require('../models/dailyReportModel');
+      const WeeklyReport = require('../models/WeeklyReport');
       
-      const updateResult = await DailyReport.updateMany(
+      // Update Daily Reports
+      dailyUpdateResult = await DailyReport.updateMany(
         { 
           projectName: oldName  // ← Remove userId filter to update ALL users' reports
         },
@@ -160,13 +172,27 @@ exports.updateProject = async (req, res) => {
         }
       );
       
-      console.log(`Updated ${updateResult.modifiedCount} reports from "${oldName}" to "${newName}"`);
+      // Update Weekly Reports
+      weeklyUpdateResult = await WeeklyReport.updateMany(
+        { 
+          projectName: oldName
+        },
+        { 
+          $set: { 
+            projectName: newName,
+            'sections.cover.projectName': newName  // Update nested cover project name
+          }
+        }
+      );
+      
+      console.log(`Updated ${dailyUpdateResult.modifiedCount} daily reports from "${oldName}" to "${newName}"`);
+      console.log(`Updated ${weeklyUpdateResult.modifiedCount} weekly reports from "${oldName}" to "${newName}"`);
     }
     
     res.status(200).json({
       success: true,
       data: project,
-      message: `Project updated successfully${oldName !== newName ? ` and ${updateResult?.modifiedCount || 0} reports updated` : ''}`
+      message: `Project updated successfully${oldName !== newName ? ` and ${dailyUpdateResult?.modifiedCount || 0} daily reports and ${weeklyUpdateResult?.modifiedCount || 0} weekly reports updated` : ''}`
     });
     
   } catch (error) {
@@ -196,15 +222,23 @@ exports.deleteProject = async (req, res) => {
     }
 
     // Delete all reports associated with this project
-    const deleteResult = await DailyReport.deleteMany({ 
+    const DailyReport = require('../models/dailyReportModel');
+    const WeeklyReport = require('../models/WeeklyReport');
+    
+    const dailyDeleteResult = await DailyReport.deleteMany({ 
+      projectName: project.name 
+    });
+    
+    const weeklyDeleteResult = await WeeklyReport.deleteMany({ 
       projectName: project.name 
     });
 
-    console.log(`Deleted ${deleteResult.deletedCount} reports for project "${project.name}"`);
+    console.log(`Deleted ${dailyDeleteResult.deletedCount} daily reports for project "${project.name}"`);
+    console.log(`Deleted ${weeklyDeleteResult.deletedCount} weekly reports for project "${project.name}"`);
     
     res.status(200).json({
       success: true,
-      message: `Project and ${deleteResult.deletedCount} reports deleted successfully`
+      message: `Project and ${dailyDeleteResult.deletedCount} daily reports and ${weeklyDeleteResult.deletedCount} weekly reports deleted successfully`
     });
     
   } catch (error) {
