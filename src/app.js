@@ -10,6 +10,7 @@ const projectRoutes = require("./routes/projectRoutes");
 const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const materialRoutes = require("./features/material_master/routes/materialRoutes");
 const adminRoutes = require("./features/admin_dashboard/routes/adminRoutes");
 const purchaseRequestRoutes = require("./features/purchase_request/routes/purchaseRequestRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
@@ -101,6 +102,7 @@ app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
 app.use("/api/admin", authenticateToken, adminRoutes);
 app.use("/api/purchase-requests", authenticateToken, purchaseRequestRoutes); //Add Purchase Request Routes
+app.use("/api/materials", authenticateToken, materialRoutes); // Add Material Routes
 
 // Health check route
 app.get("/health", async (req, res) => {
