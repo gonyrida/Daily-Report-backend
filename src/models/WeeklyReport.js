@@ -188,6 +188,8 @@ const weeklyReportSchema = new mongoose.Schema({
         items: [{
           code: String,
           description: String,
+          issuedBy: String,
+          issuedDate: String,
           status: String,
           dateResponded: String
         }],
@@ -197,6 +199,8 @@ const weeklyReportSchema = new mongoose.Schema({
         items: [{
           code: String,
           description: String,
+          receivedDate: String,
+          inspectionDate: String,
           status: String,
           dateResponded: String
         }],

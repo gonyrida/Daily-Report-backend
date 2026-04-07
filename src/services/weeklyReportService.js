@@ -744,6 +744,8 @@ const getTemplate = async (projectName) => {
               {
                 code: '',
                 description: '',
+                issuedBy: '',
+                issuedDate: '',
                 status: '',
                 dateResponded: ''
               }
@@ -755,6 +757,8 @@ const getTemplate = async (projectName) => {
               {
                 code: '',
                 description: '',
+                receivedDate: '',
+                inspectionDate: '',
                 status: '',
                 dateResponded: ''
               }
