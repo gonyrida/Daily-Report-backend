@@ -239,15 +239,37 @@ exports.getPRProjects = async (req, res) => {
     } else {
       /** * ADMIN/APPROVER ROLE: Keep project documents intact
        */
-      pipeline.push({
-        $lookup: {
-          from: "users", // Adjust if your collection name is different
-          localField: "createdBy",
-          foreignField: "_id",
-          as: "createdBy"
+      pipeline.push(
+        {
+          $lookup: {
+            from: "users", // Adjust if your collection name is different
+            localField: "createdBy",
+            foreignField: "_id",
+            pipeline: [
+              { 
+                $project: { 
+                  firstName: 1,
+                  lastName: 1,
+                }
+              }
+            ],
+            as: "createdBy"
+          }
+        },
+        { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } },
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            createdAt: 1,
+            projectCode: 1,
+            subProjects: 1,
+            purposes: 1,
+            createdBy: "$createdBy",
+            status: 1
+          }
         }
-      },
-      { $unwind: { path: "$createdBy", preserveNullAndEmptyArrays: true } });
+      );
     }
 
     // 3. Shared Pagination and Sorting

@@ -23,16 +23,14 @@ const materialSchema = new mongoose.Schema(
     },
     reference: {
       type: String,
-      maxlength: [500, 'Reference cannot exceed 500 characters'],
-      default: '#file:placeholder.png'
+      trim: true,
+      // maxlength: [500, 'Reference cannot exceed 500 characters'],
+      default: null
     },
     unit: {
       type: String,
       required: [true, 'Unit of measurement is required'],
-      enum: {
-        values: ['pcs', 'kg', 'meter', 'liter', 'box', 'pack'],
-        message: '{VALUE} is not a valid unit. Allowed: pcs, kg, meter, liter, box, pack'
-      }
+      trim: true
     },
     unitPrice: {
       type: mongoose.Schema.Types.Decimal128,
