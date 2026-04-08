@@ -7,6 +7,7 @@ const router = express.Router();
 router.post('/', projectController.createProject);
 router.get('/', projectController.getUserProjects);
 router.put('/:id', projectController.updateProject);
+router.put('/:id/move-to-folder', projectController.moveProjectToFolder);
 router.delete('/:id', projectController.deleteProject);
 
 module.exports = router;

@@ -557,7 +557,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     endOfDay.setUTCHours(23, 59, 59, 999);
 
 
-    // Find existing report for this user, project, date, AND location
+    // Find existing report for this user, project, date, location, AND folder
     const query = {
       userId,
       projectName,
@@ -569,10 +569,18 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       query.location = reportData.location;
     }
     
+    // Add folderId to query if provided (to separate reports in different folders)
+    if (reportData.folderId) {
+      query.folderId = reportData.folderId;
+    } else {
+      // If no folderId specified, match reports without a folder (project root level)
+      query.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+    }
+    
     let report = await DailyReport.findOne(query).session(session);
 
 
-    // 🔥 FIX #1: Get the previous report with projectName AND location filter
+    // 🔥 FIX #1: Get the previous report with projectName, location, AND folder filter
     const previousReportQuery = {
       userId,
       projectName,  // ← CRITICAL FIX: Must match same project!
@@ -582,6 +590,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     // Add location to previous report query if current location is provided
     if (reportData.location) {
       previousReportQuery.location = reportData.location;
+    }
+    
+    // Add folderId to previous report query if provided
+    if (reportData.folderId) {
+      previousReportQuery.folderId = reportData.folderId;
     }
     
     const previousReport = await DailyReport.findOne(previousReportQuery)
@@ -720,6 +733,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         activities, // NEW: Add activities field
         status: "draft",
         lastUpdated: new Date(),
+        // Add folder info if provided
+        ...(reportData.folderId && { folderId: reportData.folderId }),
+        ...(reportData.folderName && { folderName: reportData.folderName }),
       };
       
       report = new DailyReport(newReportData);
@@ -766,6 +782,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     // Add location to future reports query if current location is provided
     if (reportData.location) {
       futureReportsQuery.location = reportData.location;
+    }
+    
+    // Add folderId to future reports query if provided
+    if (reportData.folderId) {
+      futureReportsQuery.folderId = reportData.folderId;
     }
     
     const futureReports = await DailyReport.find(futureReportsQuery)
@@ -1049,6 +1070,15 @@ const deleteReport = async (userId, reportId) => {
       console.log("DEBUG BACKEND SERVICE: Report not found for deletion");
       return null;
     }
+    
+    // Log folder status to verify reports without folders delete correctly
+    console.log("DEBUG BACKEND SERVICE: Report found:", { 
+      reportId: report._id, 
+      projectName: report.projectName,
+      folderId: report.folderId || null,
+      folderName: report.folderName || null,
+      hasFolder: !!report.folderId 
+    });
     
     // Delete the report
     const result = await DailyReport.findOneAndDelete({

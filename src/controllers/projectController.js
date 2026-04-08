@@ -1,4 +1,5 @@
 const Project = require('../models/projectModel');
+const Folder = require('../models/folderModel');
 const DailyReport = require('../models/dailyReportModel');
 
 // @desc    Create a new project
@@ -6,7 +7,7 @@ const DailyReport = require('../models/dailyReportModel');
 // @access  Private
 exports.createProject = async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, folderId } = req.body;
     
     if (!name || name.trim() === '') {
       return res.status(400).json({ 
@@ -14,24 +15,42 @@ exports.createProject = async (req, res) => {
       });
     }
 
-    // Check if project already exists for ANY user (global unique)
+    // Check if project already exists for this company
     const existingProject = await Project.findOne({ 
       name: name.trim(), 
+      companyId: req.user.companyId,
       isActive: true 
     });
     
     if (existingProject) {
       return res.status(400).json({ 
-        error: 'Project name already taken by another user'
+        error: 'Project name already taken'
       });
+    }
+    
+    // If folderId provided, verify it exists
+    let folderName = '';
+    if (folderId) {
+      const folder = await Folder.findOne({
+        _id: folderId,
+        companyId: req.user.companyId,
+        isActive: true
+      });
+      if (!folder) {
+        return res.status(404).json({
+          error: 'Folder not found'
+        });
+      }
+      folderName = folder.name;
     }
     
     // Create new project
     const project = new Project({
       name: name.trim(),
-      companyId: req.user.companyId,  // ← ADD THIS
+      companyId: req.user.companyId,
       createdBy: req.user.userId,
-      createdByName: req.user.name || 'Unknown User'
+      createdByName: req.user.name || 'Unknown User',
+      ...(folderId && { folderId, folderName })
     });
     
     const savedProject = await project.save();
@@ -39,7 +58,7 @@ exports.createProject = async (req, res) => {
     res.status(201).json({
       success: true,
       data: savedProject,
-      message: 'Project created successfully'
+      message: folderId ? `Project created in folder "${folderName}"` : 'Project created successfully'
     });
     
   } catch (error) {
@@ -56,10 +75,23 @@ exports.createProject = async (req, res) => {
 // @access  Private
 exports.getUserProjects = async (req, res) => {
   try {
-    const projects = await Project.find({ 
-      companyId: req.user.companyId,  // ← ADD THIS FILTER
+    const { folderId } = req.query;
+    
+    // Build query
+    const query = { 
+      companyId: req.user.companyId,
       isActive: true
-    })
+    };
+    
+    // If folderId specified, filter by folder
+    if (folderId) {
+      query.folderId = folderId;
+    } else if (folderId === 'null' || folderId === '') {
+      // Get root-level projects (no folder)
+      query.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+    }
+    
+    const projects = await Project.find(query)
     .sort({ updatedAt: -1 })
     .select('-__v');
     
@@ -245,6 +277,72 @@ exports.deleteProject = async (req, res) => {
     console.error('Delete project error:', error);
     res.status(500).json({ 
       error: 'Failed to delete project',
+      details: error.message 
+    });
+  }
+};
+
+// @desc    Move project to folder
+// @route   PUT /api/projects/:id/move-to-folder
+// @access  Private
+exports.moveProjectToFolder = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { folderId } = req.body;
+    
+    // Get current project
+    const project = await Project.findOne({ 
+      _id: id, 
+      companyId: req.user.companyId,
+      isActive: true 
+    });
+    
+    if (!project) {
+      return res.status(404).json({ 
+        error: 'Project not found' 
+      });
+    }
+    
+    let folderName = '';
+    
+    // If folderId provided, verify it exists
+    if (folderId) {
+      const folder = await Folder.findOne({
+        _id: folderId,
+        companyId: req.user.companyId,
+        isActive: true
+      });
+      if (!folder) {
+        return res.status(404).json({
+          error: 'Folder not found'
+        });
+      }
+      folderName = folder.name;
+    }
+    
+    // Update project's folder
+    const updatedProject = await Project.findOneAndUpdate(
+      { _id: id, companyId: req.user.companyId, isActive: true },
+      { 
+        folderId: folderId || null,
+        folderName: folderName,
+        updatedAt: new Date()
+      },
+      { new: true, runValidators: true }
+    );
+    
+    res.status(200).json({
+      success: true,
+      data: updatedProject,
+      message: folderId 
+        ? `Project moved to folder "${folderName}"`
+        : 'Project moved to root'
+    });
+    
+  } catch (error) {
+    console.error('Move project error:', error);
+    res.status(500).json({ 
+      error: 'Failed to move project',
       details: error.message 
     });
   }
