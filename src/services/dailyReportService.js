@@ -557,27 +557,60 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     endOfDay.setUTCHours(23, 59, 59, 999);
 
 
-    // Find existing report for this user, project, date, location, AND folder
-    const query = {
-      userId,
-      projectName,
-      reportDate: { $gte: startOfDay, $lte: endOfDay },
-    };
+    // Find existing report - check by reportId first, then projectId+date, then projectName+date
+    let report = null;
     
-    // Add location to query if provided
-    if (reportData.location) {
-      query.location = reportData.location;
+    // 1. If reportId provided, find by reportId (draft being saved)
+    if (reportData.reportId) {
+      report = await DailyReport.findById(reportData.reportId).session(session);
     }
     
-    // Add folderId to query if provided (to separate reports in different folders)
-    if (reportData.folderId) {
-      query.folderId = reportData.folderId;
-    } else {
-      // If no folderId specified, match reports without a folder (project root level)
-      query.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+    // 2. If not found and projectId provided, find by projectId + date (handles renamed projects)
+    if (!report && reportData.projectId) {
+      const projectIdQuery = {
+        userId,
+        projectId: reportData.projectId,
+        reportDate: { $gte: startOfDay, $lte: endOfDay },
+      };
+      
+      // Add location to query if provided
+      if (reportData.location) {
+        projectIdQuery.location = reportData.location;
+      }
+      
+      // Add folderId to query if provided
+      if (reportData.folderId) {
+        projectIdQuery.folderId = reportData.folderId;
+      } else {
+        projectIdQuery.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+      }
+      
+      report = await DailyReport.findOne(projectIdQuery).session(session);
     }
     
-    let report = await DailyReport.findOne(query).session(session);
+    // 3. If still not found, fallback to projectName + date (backward compatibility)
+    if (!report) {
+      const query = {
+        userId,
+        projectName,
+        reportDate: { $gte: startOfDay, $lte: endOfDay },
+      };
+      
+      // Add location to query if provided
+      if (reportData.location) {
+        query.location = reportData.location;
+      }
+      
+      // Add folderId to query if provided (to separate reports in different folders)
+      if (reportData.folderId) {
+        query.folderId = reportData.folderId;
+      } else {
+        // If no folderId specified, match reports without a folder (project root level)
+        query.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+      }
+      
+      report = await DailyReport.findOne(query).session(session);
+    }
 
 
     // 🔥 FIX #1: Get the previous report with projectName, location, AND folder filter
@@ -690,6 +723,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     if (report) {
       // Update existing report
       
+      // Update projectId if provided (allows migrating old reports to new project linking)
+      if (reportData.projectId && !report.projectId) {
+        report.projectId = reportData.projectId;
+      }
+      
       // Update text fields with strategy using processed data
       report.location = updateTextField(report.location, processedReportData.location, 'replace');
       report.description = updateTextField(report.description, processedReportData.description, 'replace');
@@ -721,8 +759,10 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
 
       const newReportData = {
         userId,
-        companyId, // ← ADD THIS
-        createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
+        companyId,
+        createdBy: userFullName,
+        // Add projectId if provided (for reliable project linking)
+        ...(reportData.projectId && { projectId: reportData.projectId }),
         ...processedReportData, // 🚀 Use processed data with Supabase URLs
         managementTeam,
         workingTeamInterior,
@@ -730,7 +770,7 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         workingTeam, // Keep backward compatibility
         materials,
         machinery,
-        activities, // NEW: Add activities field
+        activities,
         status: "draft",
         lastUpdated: new Date(),
         // Add folder info if provided
@@ -995,7 +1035,7 @@ const getRecentReports = async (userId, limit = 20, statusFilter = null) => {
     const reports = await DailyReport.find(query)
       .sort({ updatedAt: -1 })
       .limit(limit)
-      .select('projectName reportDate status updatedAt createdAt submittedAt');
+      .select('projectId projectName reportDate status updatedAt createdAt submittedAt');
 
     return reports;
   } catch (error) {
@@ -1121,7 +1161,7 @@ const deleteReport = async (userId, reportId) => {
   }
 };
 
-const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "", projectIdFilter = "") => {
   try {
     const skip = (page - 1) * limit;
     
@@ -1129,7 +1169,7 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
     let searchQuery = search ? {
       $and: [
         { companyId },
-        { status: "submitted" },  // ← ADD THIS
+        { status: "submitted" },
         {
           $or: [
             { projectName: { $regex: search, $options: "i" } },
@@ -1141,10 +1181,20 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
       ]
     } : { 
       companyId,
-      status: "submitted"  // ← ADD THIS
+      status: "submitted"
     };
-    // ADD PROJECT FILTER
-    if (projectFilter) {
+
+    // ADD PROJECT FILTER - Prioritize projectId if available, fallback to projectName
+    if (projectIdFilter) {
+      // Use projectId for more reliable lookup (works even if project name changed)
+      searchQuery = {
+        $and: [
+          searchQuery,
+          { projectId: projectIdFilter }
+        ]
+      };
+    } else if (projectFilter) {
+      // Fallback to projectName for backward compatibility
       searchQuery = {
         $and: [
           searchQuery,
@@ -1184,7 +1234,7 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
 
 const getReportsByLocation = async (location = null, projectName = null) => {
   try {
-    const query = { projectName };
+    const query = { projectName, status: "submitted" };
     
     if (location) {
       query.location = location;

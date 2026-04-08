@@ -4,6 +4,32 @@ const { aggregateManpowerData, updateWeeklyReportManpower } = require('../utils/
 const mongoose = require('mongoose'); // ← ADD THIS
 
 /**
+ * Calculate week start (Friday) and end (Thursday) dates for a given week number
+ * @param {number} weekNumber - Week number (1-53)
+ * @param {number} year - Year (defaults to current year)
+ * @returns {Object} - { startDate, endDate }
+ */
+const getWeekDates = (weekNumber, year = new Date().getFullYear()) => {
+  // Get first day of the year
+  const firstDayOfYear = new Date(year, 0, 1);
+  
+  // Find the first Friday of the year (week starts on Friday)
+  const dayOfWeek = firstDayOfYear.getDay(); // 0 = Sunday, 5 = Friday
+  const daysUntilFriday = (5 - dayOfWeek + 7) % 7;
+  const firstFriday = new Date(year, 0, 1 + daysUntilFriday);
+  
+  // Calculate start date (Friday) for the given week number
+  const startDate = new Date(firstFriday);
+  startDate.setDate(firstFriday.getDate() + (weekNumber - 1) * 7);
+  
+  // End date is Thursday (6 days after Friday)
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 6);
+  
+  return { startDate, endDate };
+};
+
+/**
  * Transform frontend activity data to backend format
  * Since schemas now match, this is mostly validation and defaults
  */
@@ -161,6 +187,14 @@ const getReportById = async (reportId, userId, companyId) => {
  */
 const createReport = async (userId, companyId, reportData) => {
   try {
+    // Calculate proper week dates if not provided
+    let { startDate, endDate } = reportData;
+    if (!startDate || !endDate) {
+      const weekDates = getWeekDates(reportData.weekNumber || 1);
+      startDate = weekDates.startDate;
+      endDate = weekDates.endDate;
+    }
+    
     // Ensure sections object exists and has introduction with proper defaults
     const sections = {
       ...reportData.sections,
@@ -176,8 +210,8 @@ const createReport = async (userId, companyId, reportData) => {
     const report = new WeeklyReport({
       projectName: reportData.projectName,
       weekNumber: reportData.weekNumber,
-      startDate: reportData.startDate,
-      endDate: reportData.endDate,
+      startDate,
+      endDate,
       sections: sections,  // Use the sections object directly
       userId,
       companyId,  // ← ADD THIS
@@ -581,13 +615,16 @@ const autoSaveReport = async (reportId, userId, updateData) => {
 /**
  * Get weekly report template
  */
-const getTemplate = async (projectName) => {
+const getTemplate = async (projectName, weekNumber = 1) => {
   try {
+    // Calculate proper week dates
+    const { startDate, endDate } = getWeekDates(weekNumber);
+    
     const template = {
       projectName,
-      weekNumber: 1,
-      startDate: new Date(),
-      endDate: new Date(),
+      weekNumber,
+      startDate,
+      endDate,
       status: 'draft',
       sections: {
         cover: {

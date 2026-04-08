@@ -190,17 +190,33 @@ exports.updateProject = async (req, res) => {
     // 🚀 NEW: Update all reports with the old project name
     let dailyUpdateResult = null;
     let weeklyUpdateResult = null;
+    let dailyProjectIdUpdateResult = null;
     if (oldName !== newName) {
       const DailyReport = require('../models/dailyReportModel');
       const WeeklyReport = require('../models/WeeklyReport');
       
-      // Update Daily Reports
+      // Update Daily Reports - project name
       dailyUpdateResult = await DailyReport.updateMany(
         { 
           projectName: oldName  // ← Remove userId filter to update ALL users' reports
         },
         { 
           $set: { projectName: newName }
+        }
+      );
+      
+      // 🆕 NEW: Also set projectId in reports that don't have it yet
+      // This ensures old reports are linked to the project by ID for reliable fetching
+      dailyProjectIdUpdateResult = await DailyReport.updateMany(
+        { 
+          projectName: newName,  // Find reports with the new name (just updated)
+          $or: [
+            { projectId: { $exists: false } },
+            { projectId: null }
+          ]
+        },
+        { 
+          $set: { projectId: id }  // Set the projectId to the current project _id
         }
       );
       
@@ -218,6 +234,7 @@ exports.updateProject = async (req, res) => {
       );
       
       console.log(`Updated ${dailyUpdateResult.modifiedCount} daily reports from "${oldName}" to "${newName}"`);
+      console.log(`Set projectId in ${dailyProjectIdUpdateResult?.modifiedCount || 0} daily reports`);
       console.log(`Updated ${weeklyUpdateResult.modifiedCount} weekly reports from "${oldName}" to "${newName}"`);
     }
     

@@ -42,6 +42,12 @@ const dailyReportSchema = new mongoose.Schema(
       required: false, // ← IMPORTANT: Optional for existing reports
     },
 
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      required: false, // Optional for backward compatibility
+    },
+
     projectName: {
       type: String,
       required: true,
@@ -276,6 +282,7 @@ const dailyReportSchema = new mongoose.Schema(
 );
 
 // Add indexes for faster queries and auto-save functionality
+dailyReportSchema.index({ projectId: 1, reportDate: -1 }); // Index by projectId for faster lookups
 dailyReportSchema.index({ projectName: 1, reportDate: 1 });
 dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
 dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
