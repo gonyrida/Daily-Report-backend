@@ -2,7 +2,7 @@
 // Server-side Supabase integration for backend
 
 const { createClient } = require('@supabase/supabase-js');
-const env = require('../../config/env');
+// dotenv.config() is already called in server.js
 
 // Get Supabase credentials from environment
 const supabaseUrl = process.env.SUPABASE_URL || 'https://ldwvgxpyeicdelcfygqd.supabase.co';

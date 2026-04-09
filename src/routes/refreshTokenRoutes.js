@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const TokenBlacklist = require("../models/tokenBlacklistModel");
 const { setTokenCookie } = require("../middleware/authMiddleware");
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 const generateToken = require("../utils/generateToken");
 
 const router = express.Router();
@@ -23,7 +23,7 @@ router.post("/", async (req, res) => {
     }
 
     // Verify refresh token
-    const decoded = jwt.verify(refreshToken, env.REFRESH_TOKEN_SECRET);
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN_SECRET);
     
     // Ensure it's a refresh token
     if (decoded.type !== "refresh") {

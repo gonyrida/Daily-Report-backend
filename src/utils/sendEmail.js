@@ -1,24 +1,24 @@
 const nodemailer = require("nodemailer");
-const config = require("../config/env"); // import your config
+// dotenv.config() is already called in server.js
 
 const sendEmail = async ({ to, subject, html }) => {
   try {
     console.log("📧 Attempting to send email to:", to);
     console.log("📧 Email config -", {
-      host: config.EMAIL_HOST,
-      port: config.EMAIL_PORT,
-      user: config.EMAIL_USER,
-      passExists: !!config.EMAIL_PASS,
-      from: config.EMAIL_FROM,
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      user: process.env.EMAIL_USER,
+      passExists: !!process.env.EMAIL_PASS,
+      from: process.env.EMAIL_FROM,
     });
 
     const transporter = nodemailer.createTransport({
-      host: config.EMAIL_HOST,
-      port: config.EMAIL_PORT,
-      secure: config.EMAIL_PORT == 465, // true for 465 SSL, false for 587 TLS
+      host: process.env.EMAIL_HOST,
+      port: process.env.EMAIL_PORT,
+      secure: process.env.EMAIL_PORT == 465, // true for 465 SSL, false for 587 TLS
       auth: {
-        user: config.EMAIL_USER,
-        pass: config.EMAIL_PASS,
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
       tls: {
         minVersion: "TLSv1.2",
@@ -34,7 +34,7 @@ const sendEmail = async ({ to, subject, html }) => {
     console.log("✅ Email transporter verified successfully");
 
     const mailOptions = {
-      from: `"CACPM Support" <${config.EMAIL_FROM}>`,
+      from: `"CACPM Support" <${process.env.EMAIL_FROM}>`,
       to,
       subject,
       html,

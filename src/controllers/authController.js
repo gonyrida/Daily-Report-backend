@@ -19,7 +19,7 @@ const { generateEmailVerificationToken, verifyEmailToken } = require("../utils/g
 const { getEmailVerificationTemplate } = require("../utils/emailTemplates");
 const { findEmployeeByEmail } = require("../data/employees");
 const crypto = require("crypto");
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -671,7 +671,7 @@ exports.forgotPassword = async (req, res) => {
 
         // Prepare reset URL
 
-        const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${resetToken}`;
 
         console.log("🔗 Reset URL generated");
 

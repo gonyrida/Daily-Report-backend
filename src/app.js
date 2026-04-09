@@ -15,7 +15,7 @@ const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
-const env = require("./config/env"); // Add this line
+// dotenv.config() is already called in server.js
 
 const app = express();
 
@@ -199,7 +199,7 @@ app.get("/health", async (req, res) => {
         api: {
           status: 'running',
           version: process.env.npm_package_version || '1.0.0',
-          environment: env.NODE_ENV || 'development'
+          environment: process.env.NODE_ENV || 'development'
         }
       },
       system: {
@@ -259,7 +259,7 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     success: false,
     message: err.message || "Something broke!",
-    error: env.NODE_ENV === "development" ? err.stack : undefined,
+    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 });
 

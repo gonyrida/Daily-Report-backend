@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 /**
  * Generate a secure JWT token for password reset
@@ -15,8 +15,8 @@ const generatePasswordResetToken = (user) => {
     iat: Math.floor(Date.now() / 1000),
   };
 
-  return jwt.sign(payload, env.JWT_RESET_SECRET, {
-    expiresIn: env.JWT_RESET_EXPIRES_IN,
+  return jwt.sign(payload, process.env.JWT_RESET_SECRET, {
+    expiresIn: process.env.JWT_RESET_EXPIRES_IN || '10m',
     issuer: "cacpm-backend",
     audience: "cacpm-frontend",
   });
@@ -30,7 +30,7 @@ const generatePasswordResetToken = (user) => {
  */
 const verifyPasswordResetToken = (token) => {
   try {
-    const decoded = jwt.verify(token, env.JWT_RESET_SECRET, {
+    const decoded = jwt.verify(token, process.env.JWT_RESET_SECRET, {
       issuer: "cacpm-backend",
       audience: "cacpm-frontend",
     });
