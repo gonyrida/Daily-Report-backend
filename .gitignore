@@ -27,3 +27,6 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Employee data - sensitive information
+src/data/employees.js
+
