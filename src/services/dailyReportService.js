@@ -1232,9 +1232,16 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
   }
 };
 
-const getReportsByLocation = async (location = null, projectName = null) => {
+const getReportsByLocation = async (location = null, projectName = null, projectId = null) => {
   try {
-    const query = { projectName, status: "submitted" };
+    const query = { status: "submitted" };
+    
+    // Prioritize projectId if available, fallback to projectName
+    if (projectId) {
+      query.projectId = projectId;
+    } else if (projectName) {
+      query.projectName = projectName;
+    }
     
     if (location) {
       query.location = location;

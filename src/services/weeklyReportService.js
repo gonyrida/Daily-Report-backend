@@ -85,6 +85,7 @@ const getAllReports = async (userId, options = {}) => {
       limit = 10,
       status,
       projectName,
+      projectId,
       startDate,
       endDate,
       sortBy = 'createdAt',
@@ -102,7 +103,10 @@ const getAllReports = async (userId, options = {}) => {
       query.status = status;
     }
     
-    if (projectName) {
+    // Prioritize projectId if available, fallback to projectName
+    if (projectId) {
+      query.projectId = projectId;
+    } else if (projectName) {
       query.projectName = new RegExp(projectName, 'i');
     }
     
@@ -1344,7 +1348,7 @@ const createReportWithManpower = async (userId, companyId, reportData, aggregati
  * Get company-wide weekly reports (submitted only) with pagination and filtering
  * Similar to getCompanyReports in dailyReportService
  */
-const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "", projectIdFilter = "") => {
   try {
     const skip = (page - 1) * limit;
     
@@ -1383,8 +1387,18 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
       };
     }
 
-    // Add project filter - case-insensitive regex match (consistent with personal reports)
-    if (projectFilter) {
+    // Add project filter - prioritize projectId if available, fallback to projectName
+    if (projectIdFilter) {
+      // Use projectId for more reliable lookup (works even if project name changed)
+      searchQuery = {
+        $and: [
+          searchQuery,
+          { projectId: projectIdFilter }
+        ]
+      };
+      console.log(`🔍 Company Reports Filter - projectIdFilter: "${projectIdFilter}"`);
+    } else if (projectFilter) {
+      // Fallback to projectName for backward compatibility
       searchQuery = {
         $and: [
           searchQuery,
@@ -1392,8 +1406,8 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
         ]
       };
       console.log(`🔍 Company Reports Filter - projectFilter: "${projectFilter}"`);
-      console.log(`🔍 Final searchQuery:`, JSON.stringify(searchQuery, null, 2));
     }
+    console.log(`🔍 Final searchQuery:`, JSON.stringify(searchQuery, null, 2));
 
     const [reports, total] = await Promise.all([
       WeeklyReport.find(searchQuery)

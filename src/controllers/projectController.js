@@ -133,6 +133,38 @@ exports.getUserProjects = async (req, res) => {
   }
 };
 
+// @desc    Get a single project by ID
+// @route   GET /api/projects/:id
+// @access  Private
+exports.getProjectById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const project = await Project.findOne({
+      _id: id,
+      companyId: req.user.companyId,
+      isActive: true
+    }).select('-__v');
+    
+    if (!project) {
+      return res.status(404).json({
+        error: 'Project not found'
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      data: project
+    });
+    
+  } catch (error) {
+    console.error('Get project by ID error:', error);
+    res.status(500).json({ 
+      error: 'Server error retrieving project' 
+    });
+  }
+};
+
 // @desc    Update a project
 // @route   PUT /api/projects/:id
 // @access  Private
@@ -150,7 +182,7 @@ exports.updateProject = async (req, res) => {
     // Get current project to get old name
     const currentProject = await Project.findOne({ 
       _id: id, 
-      companyId: req.user.companyId,  // ← ADD THIS
+      companyId: req.user.companyId,
       createdBy: req.user.userId, 
       isActive: true 
     });
@@ -179,7 +211,7 @@ exports.updateProject = async (req, res) => {
     
     // Update project name
     const project = await Project.findOneAndUpdate(
-      { _id: id, companyId: req.user.companyId, createdBy: req.user.userId, isActive: true },  // ← ADD companyId
+      { _id: id, companyId: req.user.companyId, createdBy: req.user.userId, isActive: true },
       { 
         name: newName,
         updatedAt: new Date()
@@ -187,7 +219,7 @@ exports.updateProject = async (req, res) => {
       { new: true, runValidators: true }
     );
     
-    // 🚀 NEW: Update all reports with the old project name
+    // Update all reports with the old project name
     let dailyUpdateResult = null;
     let weeklyUpdateResult = null;
     let dailyProjectIdUpdateResult = null;
@@ -198,25 +230,24 @@ exports.updateProject = async (req, res) => {
       // Update Daily Reports - project name
       dailyUpdateResult = await DailyReport.updateMany(
         { 
-          projectName: oldName  // ← Remove userId filter to update ALL users' reports
+          projectName: oldName
         },
         { 
           $set: { projectName: newName }
         }
       );
       
-      // 🆕 NEW: Also set projectId in reports that don't have it yet
-      // This ensures old reports are linked to the project by ID for reliable fetching
+      // Also set projectId in reports that don't have it yet
       dailyProjectIdUpdateResult = await DailyReport.updateMany(
         { 
-          projectName: newName,  // Find reports with the new name (just updated)
+          projectName: newName,
           $or: [
             { projectId: { $exists: false } },
             { projectId: null }
           ]
         },
         { 
-          $set: { projectId: id }  // Set the projectId to the current project _id
+          $set: { projectId: id }
         }
       );
       
@@ -228,7 +259,7 @@ exports.updateProject = async (req, res) => {
         { 
           $set: { 
             projectName: newName,
-            'sections.cover.projectName': newName  // Update nested cover project name
+            'sections.cover.projectName': newName
           }
         }
       );

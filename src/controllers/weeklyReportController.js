@@ -11,6 +11,7 @@ const getWeeklyReports = async (req, res) => {
       limit = 10,
       status,
       projectName,
+      projectId,
       startDate,
       endDate,
       sortBy = 'createdAt',
@@ -22,6 +23,7 @@ const getWeeklyReports = async (req, res) => {
       limit: parseInt(limit),
       status,
       projectName,
+      projectId,
       startDate,
       endDate,
       sortBy,
@@ -567,7 +569,7 @@ const updateReportManpower = async (req, res) => {
  */
 const getCompanyWeeklyReports = async (req, res) => {
   try {
-    const { page = 1, limit = 20, search = "", project = "" } = req.query;
+    const { page = 1, limit = 20, search = "", project = "", projectId = "" } = req.query;
     const companyId = req.user.companyId;
 
     // Check if user has companyId
@@ -583,7 +585,8 @@ const getCompanyWeeklyReports = async (req, res) => {
       parseInt(page),
       parseInt(limit),
       search,
-      project
+      project,
+      projectId
     );
 
     if (!result.success) {
