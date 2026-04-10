@@ -96,8 +96,8 @@ const getAllReports = async (userId, options = {}) => {
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    // Build query
-    const query = { userId };
+    // Build query - remove userId filter to show all reports for project
+    const query = {};
     
     if (status) {
       query.status = status;
@@ -105,7 +105,7 @@ const getAllReports = async (userId, options = {}) => {
     
     // Prioritize projectId if available, fallback to projectName
     if (projectId) {
-      query.projectId = projectId;
+      query.projectId = new mongoose.Types.ObjectId(projectId);
     } else if (projectName) {
       query.projectName = new RegExp(projectName, 'i');
     }
@@ -213,6 +213,7 @@ const createReport = async (userId, companyId, reportData) => {
 
     const report = new WeeklyReport({
       projectName: reportData.projectName,
+      projectId: reportData.projectId,  // ← add this
       weekNumber: reportData.weekNumber,
       startDate,
       endDate,
@@ -1389,10 +1390,9 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
       searchQuery = {
         $and: [
           searchQuery,
-          { projectId: projectIdFilter }
+          { projectId: new mongoose.Types.ObjectId(projectIdFilter) }
         ]
       };
-      console.log(`🔍 Company Reports Filter - projectIdFilter: "${projectIdFilter}"`);
     } else if (projectFilter) {
       // Fallback to projectName for backward compatibility
       searchQuery = {
@@ -1401,9 +1401,7 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
           { projectName: new RegExp(projectFilter, 'i') }
         ]
       };
-      console.log(`🔍 Company Reports Filter - projectFilter: "${projectFilter}"`);
     }
-    console.log(`🔍 Final searchQuery:`, JSON.stringify(searchQuery, null, 2));
 
     const [reports, total] = await Promise.all([
       WeeklyReport.find(searchQuery)
@@ -1413,8 +1411,6 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
         .populate('userId', 'firstName lastName email'),
       WeeklyReport.countDocuments(searchQuery)
     ]);
-    
-    console.log(`🔍 Company Reports Result: Found ${reports.length} reports (total: ${total})`);
     
     return {
       success: true,

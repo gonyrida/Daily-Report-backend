@@ -907,8 +907,9 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
     const report = new DailyReport({
       userId,
       companyId,
-      createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
+      createdBy: userFullName, // Auto-populate from authenticated user
       projectName: projectName ,
+      projectId: reportData.projectId || null, // Add projectId support
       ...processedReportData, // Use processed data with Supabase URLs
       reportDate,
       status: "draft",

@@ -35,6 +35,12 @@ const weeklyReportSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+  projectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+    required: false, // Optional for existing reports
+    index: true
+  },
   weekNumber: {
     type: Number,
     required: true,

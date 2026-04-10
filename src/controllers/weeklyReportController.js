@@ -572,14 +572,7 @@ const getCompanyWeeklyReports = async (req, res) => {
     const { page = 1, limit = 20, search = "", project = "", projectId = "" } = req.query;
     const companyId = req.user.companyId;
 
-    // Check if user has companyId
-    if (!companyId) {
-      return res.status(403).json({
-        success: false,
-        message: "You are not associated with any company"
-      });
-    }
-
+    
     const result = await weeklyReportService.getCompanyWeeklyReports(
       companyId,
       parseInt(page),
