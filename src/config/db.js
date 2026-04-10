@@ -17,10 +17,10 @@ const getMongoDBURI = () => {
   const laptopHostnames = ['laptop', 'notebook', 'mbp']; // Add your laptop hostname
   
   // Desktop connection string (multi-host replica set)
-  const desktopURI = process.env.DESKTOP_URI || "mongodb://cacpm_users:cacpm1@ac-0fncxww-shard-00-02.edyltbr.mongodb.net:27017,ac-0fncxww-shard-00-01.edyltbr.mongodb.net:27017,ac-0fncxww-shard-00-00.edyltbr.mongodb.net:27017/test?ssl=true&replicaSet=atlas-jbgmcp-shard-0&authSource=admin";
+  const desktopURI = process.env.DESKTOP_URI || process.env.MONGODB_URI;
   
-  // Laptop connection string (SRV)
-  const laptopURI = process.env.LAPTOP_URI || "mongodb+srv://cacpm_users:cacpm1@cacpm.edyltbr.mongodb.net/?appName=CACPM";
+  // Laptop connection string (direct replica set to avoid SRV DNS issues)
+  const laptopURI = process.env.LAPTOP_URI || process.env.MONGODB_URI;
   
   // Check if hostname contains desktop identifiers
   if (desktopHostnames.some(desktop => hostname.includes(desktop))) {
@@ -46,12 +46,18 @@ const connectDB = async () => {
   try {
     const MONGODB_URI = getMongoDBURI();
     await mongoose.connect(MONGODB_URI, {
-      family: 4
+      family: 4,
+      serverSelectionTimeoutMS: 10000, // 10 second timeout
+      connectTimeoutMS: 10000,
     });
     console.log("MongoDB connected successfully");
   } catch (error) {
     console.error("MongoDB connection error:", error);
-    process.exit(1);
+    console.log("Development mode: continuing without MongoDB connection");
+    // Don't exit in development, just continue without DB
+    if (process.env.NODE_ENV === 'production') {
+      process.exit(1);
+    }
   }
 };
 

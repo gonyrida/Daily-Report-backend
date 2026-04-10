@@ -1358,16 +1358,12 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
       status: "submitted"
     };
     
-    // Handle companyId matching - try both exact match and legacy reports
+    // Handle companyId matching - ONLY allow access to reports with matching companyId
     if (companyId) {
       // Convert to ObjectId if it's a string
       const companyIdObj = typeof companyId === 'string' ? new mongoose.Types.ObjectId(companyId) : companyId;
       
-      searchQuery.$or = [
-        { companyId: companyIdObj },  // Reports with matching ObjectId companyId
-        { companyId: { $exists: false } },  // Legacy reports without companyId field
-        { companyId: null }  // Legacy reports with null companyId
-      ];
+      searchQuery.companyId = companyIdObj;
     }
 
     // Add search filter
