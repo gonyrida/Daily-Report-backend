@@ -1,6 +1,66 @@
 const weeklyReportService = require('../services/weeklyReportService');
 
 /**
+ * Get weekly reports metadata (lightweight version for dashboard)
+ */
+const getWeeklyReportsMeta = async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      projectName,
+      projectId,
+      startDate,
+      endDate,
+      searchTerm,
+      filterStatus,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const options = {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      status,
+      projectName,
+      projectId,
+      startDate,
+      endDate,
+      searchTerm,
+      filterStatus,
+      sortBy,
+      sortOrder,
+      metaOnly: true // Flag to return only metadata
+    };
+
+    const result = await weeklyReportService.getAllReports(userId, options);
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        pagination: result.pagination,
+        message: 'Weekly reports metadata retrieved successfully'
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('Controller error in getWeeklyReportsMeta:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
+/**
  * Get all weekly reports for a user with pagination and filtering
  */
 const getWeeklyReports = async (req, res) => {
@@ -609,6 +669,7 @@ const getCompanyWeeklyReports = async (req, res) => {
 
 module.exports = {
   getWeeklyReports,
+  getWeeklyReportsMeta,
   getWeeklyReportById,
   createWeeklyReport,
   updateWeeklyReport,

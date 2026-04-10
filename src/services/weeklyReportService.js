@@ -88,8 +88,11 @@ const getAllReports = async (userId, options = {}) => {
       projectId,
       startDate,
       endDate,
+      searchTerm,
+      filterStatus,
       sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      metaOnly = false
     } = options;
 
     const skip = (page - 1) * limit;
@@ -99,8 +102,11 @@ const getAllReports = async (userId, options = {}) => {
     // Build query - remove userId filter to show all reports for project
     const query = {};
     
+    // Add status filtering
     if (status) {
       query.status = status;
+    } else if (filterStatus && filterStatus !== 'all') {
+      query.status = filterStatus;
     }
     
     // Prioritize projectId if available, fallback to projectName
@@ -110,6 +116,7 @@ const getAllReports = async (userId, options = {}) => {
       query.projectName = new RegExp(projectName, 'i');
     }
     
+    // Add date range filtering
     if (startDate || endDate) {
       query.startDate = {};
       if (startDate) {
@@ -120,7 +127,34 @@ const getAllReports = async (userId, options = {}) => {
       }
     }
 
-    const reports = await WeeklyReport.find(query)
+    // Add search functionality
+    if (searchTerm && searchTerm.trim()) {
+      const searchRegex = new RegExp(searchTerm.trim(), 'i');
+      query.$or = [
+        { projectName: searchRegex },
+        { weekNumber: !isNaN(parseInt(searchTerm)) ? parseInt(searchTerm) : undefined },
+        { status: searchRegex }
+      ].filter(Boolean);
+    }
+
+    // Define projection for metadata-only requests
+    const projection = metaOnly ? {
+      _id: 1,
+      projectName: 1,
+      projectId: 1,
+      weekNumber: 1,
+      startDate: 1,
+      endDate: 1,
+      status: 1,
+      userId: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      submittedAt: 1,
+      // Include minimal sections data for display
+      'sections.cover.dateRange': 1
+    } : {};
+
+    const reports = await WeeklyReport.find(query, projection)
       .sort(sort)
       .skip(skip)
       .limit(limit)

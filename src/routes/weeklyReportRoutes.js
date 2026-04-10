@@ -3,6 +3,7 @@ const router = express.Router();
 const weeklyReportService = require('../services/weeklyReportService');
 const {
   getWeeklyReports,
+  getWeeklyReportsMeta,
   getWeeklyReportById,
   createWeeklyReport,
   updateWeeklyReport,
@@ -24,6 +25,9 @@ router.get('/', getWeeklyReports);
 
 // GET /api/weekly-reports/company - Get company-wide submitted weekly reports
 router.get('/company', getCompanyWeeklyReports);
+
+// GET /api/weekly-reports/meta - Get weekly reports metadata (lightweight)
+router.get('/meta', getWeeklyReportsMeta);
 
 // GET /api/weekly-reports/template - Get weekly report template
 router.get('/template', getWeeklyReportTemplate);
