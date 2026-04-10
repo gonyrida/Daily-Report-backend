@@ -91,6 +91,7 @@ exports.addComment = async (req, res) => {
     // Create comment audit log
     const commentLog = new RequestAuditLog({
       requestId: req.params.id,
+      requestLabel: purchaseRequest.label,
       approver: user._id,
       role: workflowStep?.role || 'commented', // Comments don't have specific roles
       department: user.department || 'unknown',

@@ -193,6 +193,7 @@ exports.createPurchaseRequest = async (req, res) => {
       approvalWorkflow: [
         {
           approver: user._id,  // Current user as preparer
+          actedBy: user._id,
           role: 'prepared',
           status: 'completed',
           timestamp: new Date(),
@@ -201,6 +202,7 @@ exports.createPurchaseRequest = async (req, res) => {
         {
           approver: approvers?.checkedBy || null,
           backupApprover: approvers?.backupCheckedBy || null,
+          actedBy: null,
           role: 'checked',
           status: 'pending',
           timestamp: null,
@@ -209,6 +211,7 @@ exports.createPurchaseRequest = async (req, res) => {
         {
           approver: approvers?.verifiedBy || null,
           backupApprover: approvers?.backupVerifiedBy || null,
+          actedBy: null,
           role: 'verified', 
           status: 'pending',
           timestamp: null,
@@ -217,6 +220,7 @@ exports.createPurchaseRequest = async (req, res) => {
         {
           approver: approvers?.approvedBy || null,
           backupApprover: approvers?.backupApprovedBy || null,
+          actedBy: null,
           role: 'approved',
           status: 'pending', 
           timestamp: null,
@@ -378,7 +382,7 @@ exports.getPurchaseRequests = async (req, res) => {
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        totalCount,
+        total: totalCount,
         pages: totalCount > 0 ? Math.ceil(totalCount / limit) : 1
       }
     });
@@ -486,7 +490,8 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
     
     // Handle rejection immediately (no sequential validation needed)
     if (status === 'rejected') {
-      workflowStep.approver = approverId;
+      // workflowStep.approver = approverId;
+      workflowStep.actedBy = approverId;
       workflowStep.status = 'rejected';
       workflowStep.timestamp = new Date();
       workflowStep.notes = notes;
@@ -530,7 +535,8 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
     }
 
     // Update workflow step for approval
-    workflowStep.approver = approverId;
+    // workflowStep.approver = approverId;
+    workflowStep.actedBy = approverId;
     workflowStep.status = 'approved';
     workflowStep.timestamp = new Date();
     workflowStep.notes = notes;
@@ -981,7 +987,10 @@ exports.getPendingApprovals = async (req, res) => {
       status: { $nin: ['draft'] },  // exclude drafts only
       approvalWorkflow: {
         $elemMatch: {
-          approver: user._id,
+          $or: [
+            { approver: user._id },
+            { backupApprover: user._id }
+          ],
           status: 'pending'
         }
       }

@@ -219,6 +219,11 @@ const purchaseRequestSchema = new mongoose.Schema(
         enum: ["prepared", "checked", "verified", "approved"],
         required: true
       },
+      actedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        default: null
+      },
       status: {
         type: String,
         enum: ["pending", "completed", "skipped", "rejected", "approved"],
