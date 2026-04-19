@@ -205,7 +205,7 @@ exports.getPRProjects = async (req, res) => {
             _id: 1,
             name: 1,
             createdAt: 1,
-            parentProjectCode: "$projectCode",
+            projectCode: "$projectCode",
             // We only keep purposes as they are
             purposes: {
               $map: {
@@ -217,24 +217,42 @@ exports.getPRProjects = async (req, res) => {
                 }
               }
             },
-            // We FILTER the subProjects array directly in the DB
+            // Filter the subProjects array directly in the DB
             subProjects: {
-              $filter: {
-                input: "$subProjects",
-                as: "sub",
-                cond: {
-                  $or: [
-                    // If no search, keep all. If search exists, check the name.
-                    { $eq: [search || "", ""] }, 
-                    { $regexMatch: { input: "$$sub.name", regex: search || "", options: "i" } }
-                  ]
+              $let: {
+                vars: {
+                  // First, perform the filter as you did before
+                  filtered: {
+                    $filter: {
+                      input: { $ifNull: ["$subProjects", []] },
+                      as: "sub",
+                      cond: {
+                        $or: [
+                          { $eq: [search || "", ""] }, 
+                          { $regexMatch: { input: "$$sub.name", regex: search || "", options: "i" } }
+                        ]
+                      }
+                    }
+                  }
+                },
+                in: {
+                  $cond: {
+                    // IF the filtered array is empty AND there is no active search
+                    // (Usually, you only want to auto-fill if the user isn't actively searching for something else)
+                    if: { $eq: [{ $size: "$$filtered" }, 0] },
+                    then: [
+                      { 
+                        _id: "$_id", 
+                        name: "$projectCode" // Your requirement: ID from project, name from projectCode
+                      }
+                    ],
+                    else: "$$filtered"
+                  }
                 }
               }
             }
           }
-        },
-        // Only return the project if it actually has matching sub-projects left
-        { $match: { "subProjects.0": { $exists: true } } }
+        }
       );
     } else {
       /** * ADMIN/APPROVER ROLE: Keep project documents intact
@@ -263,7 +281,18 @@ exports.getPRProjects = async (req, res) => {
             name: 1,
             createdAt: 1,
             projectCode: 1,
-            subProjects: 1,
+            subProjects: {
+              $cond: {
+                if: { 
+                  $or: [
+                    { $eq: ["$subProjects", []] }, 
+                    { $eq: [{ $ifNull: ["$subProjects", "missing"] }, "missing"] }
+                  ]
+                },
+                then: [{ _id: "$_id", name: "$projectCode" }],
+                else: "$subProjects"
+              }
+            },
             purposes: 1,
             createdBy: "$createdBy",
             status: 1

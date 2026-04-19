@@ -845,20 +845,6 @@ exports.updatePurchaseRequest = async (req, res) => {
     const projectId = projectFrom?.mainId;
     let project = null;
     let projectCounter = null;
-    if (projectId && status === 'pending' && purchaseRequest.status === 'draft') {
-      project = await PR_Project.findByIdAndUpdate(
-        projectId, 
-        { $inc: { counter: 1 } }, 
-        { new: true }
-      );
-      projectCounter = project.counter;
-    } else if (projectId && status === 'draft') {
-      projectCounter = 0;
-    } else if (!projectId && status === 'pending') {
-      projectCounter = 1;
-    } else if (!projectId && status === 'draft') {
-      projectCounter = 0;
-    }
 
     if (projectId) {
       if (status === 'pending' && purchaseRequest.status === 'draft') {
@@ -868,16 +854,12 @@ exports.updatePurchaseRequest = async (req, res) => {
           { new: true }
         );
         projectCounter = project.counter;
-      } else if (status === 'pending' && purchaseRequest.status === 'pending') {
-        projectCounter = purchaseRequest.no;
       } else if (status === 'draft' && purchaseRequest.status === 'draft') {
         projectCounter = 0;
       }
     } else {
       if (status === 'pending' && purchaseRequest.status === 'draft') {
         projectCounter = 1;
-      } else if (status === 'pending' && purchaseRequest.status === 'pending') {
-        projectCounter = purchaseRequest.no;
       } else if (status === 'draft' && purchaseRequest.status === 'draft') {
         projectCounter = 0;
       }
@@ -1228,13 +1210,32 @@ exports.revisedPurchaseRequest = async (req, res) => {
 // @access  Private
 exports.getProjectPurchaseRequestsSummary = async (req, res) => {
   try {
-    const { id } = req.params; // Extract project ID from params
+    const { projectId, id } = req.params; // Extract project ID and request ID from params
+    // Define the base criteria (The "Latest" reports for the project)
+    const baseCriteria = { 
+      'projectFrom.mainId': projectId, 
+      isLatest: true ,
+      status: { $nin: ['draft'] }
+    };
+
+    // Build the final query
+    let finalQuery;
+
+    if (id !== 'none') {
+      // Find things that are (Latest AND for this project) OR (this specific ID)
+      finalQuery = {
+        $or: [
+          baseCriteria,
+          { _id: id }
+        ]
+      };
+    } else {
+      // Just use the base criteria
+      finalQuery = baseCriteria;
+    }
 
     // Find all purchase requests for the project with isLatest: true, sorted by no field
-    const reports = await PurchaseRequest.find({ 
-      'projectFrom.mainId': id, 
-      isLatest: true 
-    })
+    const reports = await PurchaseRequest.find(finalQuery)
     .sort({ no: 1 }) // Sort by no field ascending
     .select('_id label no version status purpose requestDescription requestRemarks grandTotal items.description')
     .lean();
@@ -1248,8 +1249,8 @@ exports.getProjectPurchaseRequestsSummary = async (req, res) => {
     }, 0);
 
     // Find the PR_Project to get budgetSettings and purposes
-    const projectData = await PR_Project.findById(id)
-      .select('budgetSettings purposes')
+    const projectData = await PR_Project.findById(projectId)
+      .select('budgetSettings purposes counter')
       .lean();
 
     // Calculate materialsActual - group totals by purpose
@@ -1265,12 +1266,22 @@ exports.getProjectPurchaseRequestsSummary = async (req, res) => {
       });
     }
 
-    // Calculate actual totals for each purpose from reports
-    reports.forEach(report => {
-      if (report.purpose && materialsActual[report.purpose]) {
-        materialsActual[report.purpose].actualTotal += (report.grandTotal || 0);
-      }
-    });
+    if (id !== 'none') {
+      const filteredReports = reports.filter(r => r._id.toString() !== id);
+      // Calculate actual totals for each purpose from reports
+      filteredReports.forEach(report => {
+        if (report.purpose && materialsActual[report.purpose]) {
+          materialsActual[report.purpose].actualTotal += (report.grandTotal || 0);
+        }
+      });
+    } else {
+      // Calculate actual totals for each purpose from reports
+      reports.forEach(report => {
+        if (report.purpose && materialsActual[report.purpose]) {
+          materialsActual[report.purpose].actualTotal += (report.grandTotal || 0);
+        }
+      });
+    }
 
     // Convert to array format
     const materialsActualArray = Object.values(materialsActual);
