@@ -550,17 +550,17 @@ const validateWeeklyReport = async (req, res) => {
  */
 const aggregateManpower = async (req, res) => {
   try {
-    const { projectName, startDate, endDate } = req.query;
+    const { projectName, startDate, endDate, projectId } = req.query;
     const { includePrevWeek = false, includeAccumulated = false } = req.body;
 
-    if (!projectName || !startDate || !endDate) {
+    if ((!projectName && !projectId) || !startDate || !endDate) {
       return res.status(400).json({
         success: false,
-        error: 'Missing required parameters: projectName, startDate, endDate'
+        error: 'Missing required parameters: projectName or projectId, startDate, endDate'
       });
     }
 
-    const options = { includePrevWeek, includeAccumulated };
+    const options = { includePrevWeek, includeAccumulated, projectId };
     const result = await weeklyReportService.aggregateWeeklyManpower(
       projectName,
       new Date(startDate),

@@ -1,6 +1,7 @@
 const DailyReport = require('../models/dailyReportModel');
 const WeeklyReport = require('../models/WeeklyReport');
 const { MongoClient } = require('mongodb');
+const mongoose = require('mongoose');
 // dotenv.config() is already called in server.js
 
 /**
@@ -297,13 +298,14 @@ const groupMachineryByDescription = (dailyReports) => {
 };
 
 /**
- * Distribute daily machinery values to weekly format
+ * Generic function to distribute daily resource values to weekly format
  * @param {Array} dailyReports - Array of daily reports
  * @param {Date} startDate - Week start date
  * @param {Date} endDate - Week end date
  * @param {Array} weeklyResources - Weekly resource array to populate
+ * @param {string} resourceField - Field name to read from daily report (e.g., 'machinery', 'materials')
  */
-const distributeMachineryValues = (dailyReports, startDate, endDate, weeklyResources) => {
+const distributeValues = (dailyReports, startDate, endDate, weeklyResources, resourceField) => {
   const resourceMap = {};
   weeklyResources.forEach(resource => {
     resourceMap[resource.description] = resource;
@@ -328,9 +330,9 @@ const distributeMachineryValues = (dailyReports, startDate, endDate, weeklyResou
       return;
     }
     
-    const machinery = report.machinery || [];
+    const resources = report[resourceField] || [];
     
-    machinery.forEach(dailyResource => {
+    resources.forEach(dailyResource => {
       const description = dailyResource.description || 'Unnamed';
       const todayValue = dailyResource.today || 0;
       
@@ -340,6 +342,28 @@ const distributeMachineryValues = (dailyReports, startDate, endDate, weeklyResou
       }
     });
   });
+};
+
+/**
+ * Distribute daily machinery values to weekly format
+ * @param {Array} dailyReports - Array of daily reports
+ * @param {Date} startDate - Week start date
+ * @param {Date} endDate - Week end date
+ * @param {Array} weeklyResources - Weekly resource array to populate
+ */
+const distributeMachineryValues = (dailyReports, startDate, endDate, weeklyResources) => {
+  return distributeValues(dailyReports, startDate, endDate, weeklyResources, 'machinery');
+};
+
+/**
+ * Distribute daily materials values to weekly format
+ * @param {Array} dailyReports - Array of daily reports
+ * @param {Date} startDate - Week start date
+ * @param {Date} endDate - Week end date
+ * @param {Array} weeklyResources - Weekly resource array to populate
+ */
+const distributeMaterialsValues = (dailyReports, startDate, endDate, weeklyResources) => {
+  return distributeValues(dailyReports, startDate, endDate, weeklyResources, 'materials');
 };
 
 /**
@@ -501,7 +525,7 @@ const getPreviousWeekMachinery = async (projectName, currentWeekStart) => {
  * @returns {Promise<Object>} - Aggregated manpower data for all teams
  */
 const aggregateManpowerData = async (projectName, startDate, endDate, options = {}) => {
-  const { includePrevWeek = false, includeAccumulated = false } = options;
+  const { includePrevWeek = false, includeAccumulated = false, projectId } = options;
   
   try {
     // Ensure dates are Date objects
@@ -514,7 +538,9 @@ const aggregateManpowerData = async (projectName, startDate, endDate, options = 
     }
     
     // Fetch daily reports for the week with direct MongoDB driver for better performance
-    console.log(`Fetching daily reports for project: ${projectName}, dates: ${start.toISOString()} to ${end.toISOString()}`);
+    // Use projectId if available (more reliable), otherwise fall back to projectName
+    const projectIdentifier = projectId || projectName;
+    console.log(`Fetching daily reports for project: ${projectIdentifier} (using ${projectId ? 'projectId' : 'projectName'}), dates: ${start.toISOString()} to ${end.toISOString()}`);
     
     let dailyReports;
     const client = new MongoClient(process.env.MONGODB_URI);
@@ -540,14 +566,19 @@ const aggregateManpowerData = async (projectName, startDate, endDate, options = 
         queryEnd.setHours(23, 59, 59, 999);
       }
       
-      dailyReports = await db.collection('dailyreports')
-        .find({
-          projectName,
-          reportDate: {
-            $gte: queryStart,
-            $lte: queryEnd
+      // Build query - use projectId if available (more reliable), otherwise fall back to projectName
+      // Convert projectId to ObjectId for MongoDB query
+      const query = projectId 
+        ? { 
+            projectId: new mongoose.Types.ObjectId(projectId), 
+            reportDate: { $gte: queryStart, $lte: queryEnd } 
           }
-        })
+        : { projectName, reportDate: { $gte: queryStart, $lte: queryEnd } };
+      
+      console.log('MongoDB query:', JSON.stringify(query));
+      
+      dailyReports = await db.collection('dailyreports')
+        .find(query)
         .project({
           reportDate: 1,
           managementTeam: 1,
@@ -603,15 +634,10 @@ const aggregateManpowerData = async (projectName, startDate, endDate, options = 
       result.manPower[teamField] = weeklyResources;
     }
     
-    // Aggregate materials (no daily breakdown)
+    // Aggregate materials (with daily breakdown like manpower and machinery)
     const groupedMaterials = groupMaterialsByDescription(dailyReports);
-    const weeklyMaterials = Object.keys(groupedMaterials).map(description => ({
-      description: groupedMaterials[description].description,
-      unit: groupedMaterials[description].unit,
-      thisWeek: groupedMaterials[description].today,
-      prevWeek: 0,
-      accumulated: 0
-    }));
+    const weeklyMaterials = mapToWeeklyFormat(groupedMaterials, startDate, endDate);
+    distributeMaterialsValues(dailyReports, start, end, weeklyMaterials);
     
     // Add previous week data for materials if requested
     if (includePrevWeek) {
@@ -734,6 +760,7 @@ module.exports = {
   mapToWeeklyFormat,
   distributeDailyValues,
   distributeMachineryValues,
+  distributeMaterialsValues,
   getPreviousWeekData,
   getPreviousWeekMaterials,
   getPreviousWeekMachinery,
