@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 const generateRefreshToken = (user) => {
   return jwt.sign(
@@ -8,9 +8,9 @@ const generateRefreshToken = (user) => {
       email: user.email,
       type: "refresh", // Mark as refresh token
     },
-    env.REFRESH_TOKEN_SECRET,
+    process.env.REFRESH_TOKEN_SECRET,
     {
-      expiresIn: env.REFRESH_TOKEN_EXPIRES_IN,
+      expiresIn: "7d",
     }
   );
 };

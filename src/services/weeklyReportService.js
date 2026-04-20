@@ -4,6 +4,32 @@ const { aggregateManpowerData, updateWeeklyReportManpower } = require('../utils/
 const mongoose = require('mongoose'); // ← ADD THIS
 
 /**
+ * Calculate week start (Friday) and end (Thursday) dates for a given week number
+ * @param {number} weekNumber - Week number (1-53)
+ * @param {number} year - Year (defaults to current year)
+ * @returns {Object} - { startDate, endDate }
+ */
+const getWeekDates = (weekNumber, year = new Date().getFullYear()) => {
+  // Get first day of the year
+  const firstDayOfYear = new Date(year, 0, 1);
+  
+  // Find the first Friday of the year (week starts on Friday)
+  const dayOfWeek = firstDayOfYear.getDay(); // 0 = Sunday, 5 = Friday
+  const daysUntilFriday = (5 - dayOfWeek + 7) % 7;
+  const firstFriday = new Date(year, 0, 1 + daysUntilFriday);
+  
+  // Calculate start date (Friday) for the given week number
+  const startDate = new Date(firstFriday);
+  startDate.setDate(firstFriday.getDate() + (weekNumber - 1) * 7);
+  
+  // End date is Thursday (6 days after Friday)
+  const endDate = new Date(startDate);
+  endDate.setDate(startDate.getDate() + 6);
+  
+  return { startDate, endDate };
+};
+
+/**
  * Transform frontend activity data to backend format
  * Since schemas now match, this is mostly validation and defaults
  */
@@ -59,27 +85,38 @@ const getAllReports = async (userId, options = {}) => {
       limit = 10,
       status,
       projectName,
+      projectId,
       startDate,
       endDate,
+      searchTerm,
+      filterStatus,
       sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      metaOnly = false
     } = options;
 
     const skip = (page - 1) * limit;
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    // Build query
-    const query = { userId };
+    // Build query - remove userId filter to show all reports for project
+    const query = {};
     
+    // Add status filtering
     if (status) {
       query.status = status;
+    } else if (filterStatus && filterStatus !== 'all') {
+      query.status = filterStatus;
     }
     
-    if (projectName) {
+    // Prioritize projectId if available, fallback to projectName
+    if (projectId) {
+      query.projectId = new mongoose.Types.ObjectId(projectId);
+    } else if (projectName) {
       query.projectName = new RegExp(projectName, 'i');
     }
     
+    // Add date range filtering
     if (startDate || endDate) {
       query.startDate = {};
       if (startDate) {
@@ -90,7 +127,34 @@ const getAllReports = async (userId, options = {}) => {
       }
     }
 
-    const reports = await WeeklyReport.find(query)
+    // Add search functionality
+    if (searchTerm && searchTerm.trim()) {
+      const searchRegex = new RegExp(searchTerm.trim(), 'i');
+      query.$or = [
+        { projectName: searchRegex },
+        { weekNumber: !isNaN(parseInt(searchTerm)) ? parseInt(searchTerm) : undefined },
+        { status: searchRegex }
+      ].filter(Boolean);
+    }
+
+    // Define projection for metadata-only requests
+    const projection = metaOnly ? {
+      _id: 1,
+      projectName: 1,
+      projectId: 1,
+      weekNumber: 1,
+      startDate: 1,
+      endDate: 1,
+      status: 1,
+      userId: 1,
+      createdAt: 1,
+      updatedAt: 1,
+      submittedAt: 1,
+      // Include minimal sections data for display
+      'sections.cover.dateRange': 1
+    } : {};
+
+    const reports = await WeeklyReport.find(query, projection)
       .sort(sort)
       .skip(skip)
       .limit(limit)
@@ -161,6 +225,14 @@ const getReportById = async (reportId, userId, companyId) => {
  */
 const createReport = async (userId, companyId, reportData) => {
   try {
+    // Calculate proper week dates if not provided
+    let { startDate, endDate } = reportData;
+    if (!startDate || !endDate) {
+      const weekDates = getWeekDates(reportData.weekNumber || 1);
+      startDate = weekDates.startDate;
+      endDate = weekDates.endDate;
+    }
+    
     // Ensure sections object exists and has introduction with proper defaults
     const sections = {
       ...reportData.sections,
@@ -175,9 +247,10 @@ const createReport = async (userId, companyId, reportData) => {
 
     const report = new WeeklyReport({
       projectName: reportData.projectName,
+      projectId: reportData.projectId,  // ← add this
       weekNumber: reportData.weekNumber,
-      startDate: reportData.startDate,
-      endDate: reportData.endDate,
+      startDate,
+      endDate,
       sections: sections,  // Use the sections object directly
       userId,
       companyId,  // ← ADD THIS
@@ -243,11 +316,7 @@ const updateReport = async (reportId, userId, updateData) => {
       };
     }
 
-    // DEBUG: Log incoming HSES data
-    if (updateData.sections?.hses) {
-      console.log('🔍 BACKEND updateReport - Incoming HSES data:', JSON.stringify(updateData.sections.hses, null, 2));
-    }
-
+  
     // Optimistic locking check
     if (updateData.version && existingReport.version !== updateData.version) {
       return {
@@ -585,13 +654,16 @@ const autoSaveReport = async (reportId, userId, updateData) => {
 /**
  * Get weekly report template
  */
-const getTemplate = async (projectName) => {
+const getTemplate = async (projectName, weekNumber = 1) => {
   try {
+    // Calculate proper week dates
+    const { startDate, endDate } = getWeekDates(weekNumber);
+    
     const template = {
       projectName,
-      weekNumber: 1,
-      startDate: new Date(),
-      endDate: new Date(),
+      weekNumber,
+      startDate,
+      endDate,
       status: 'draft',
       sections: {
         cover: {
@@ -748,6 +820,8 @@ const getTemplate = async (projectName) => {
               {
                 code: '',
                 description: '',
+                issuedBy: '',
+                issuedDate: '',
                 status: '',
                 dateResponded: ''
               }
@@ -759,6 +833,8 @@ const getTemplate = async (projectName) => {
               {
                 code: '',
                 description: '',
+                receivedDate: '',
+                inspectionDate: '',
                 status: '',
                 dateResponded: ''
               }
@@ -1307,7 +1383,7 @@ const createReportWithManpower = async (userId, companyId, reportData, aggregati
  * Get company-wide weekly reports (submitted only) with pagination and filtering
  * Similar to getCompanyReports in dailyReportService
  */
-const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "", projectIdFilter = "") => {
   try {
     const skip = (page - 1) * limit;
     
@@ -1317,16 +1393,12 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
       status: "submitted"
     };
     
-    // Handle companyId matching - try both exact match and legacy reports
+    // Handle companyId matching - ONLY allow access to reports with matching companyId
     if (companyId) {
       // Convert to ObjectId if it's a string
       const companyIdObj = typeof companyId === 'string' ? new mongoose.Types.ObjectId(companyId) : companyId;
       
-      searchQuery.$or = [
-        { companyId: companyIdObj },  // Reports with matching ObjectId companyId
-        { companyId: { $exists: false } },  // Legacy reports without companyId field
-        { companyId: null }  // Legacy reports with null companyId
-      ];
+      searchQuery.companyId = companyIdObj;
     }
 
     // Add search filter
@@ -1346,12 +1418,21 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
       };
     }
 
-    // Add project filter - exact match
-    if (projectFilter) {
+    // Add project filter - prioritize projectId if available, fallback to projectName
+    if (projectIdFilter) {
+      // Use projectId for more reliable lookup (works even if project name changed)
       searchQuery = {
         $and: [
           searchQuery,
-          { projectName: projectFilter }
+          { projectId: new mongoose.Types.ObjectId(projectIdFilter) }
+        ]
+      };
+    } else if (projectFilter) {
+      // Fallback to projectName for backward compatibility
+      searchQuery = {
+        $and: [
+          searchQuery,
+          { projectName: new RegExp(projectFilter, 'i') }
         ]
       };
     }

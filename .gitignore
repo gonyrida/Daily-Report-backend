@@ -12,7 +12,6 @@ env/
 # Environment variables
 .env
 .env.local
-config/env.js
 python-excel/.env
 
 
@@ -26,4 +25,7 @@ npm-debug.log*
 # OS files
 .DS_Store
 Thumbs.db
+
+# Employee data - sensitive information
+src/data/employees.js
 

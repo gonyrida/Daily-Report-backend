@@ -17,9 +17,8 @@ const {
 const { validatePasswordStrength } = require("../utils/passwordValidator");
 const { generateEmailVerificationToken, verifyEmailToken } = require("../utils/generateEmailVerificationToken");
 const { getEmailVerificationTemplate } = require("../utils/emailTemplates");
-const { findEmployeeByEmail } = require("../data/employees");
 const crypto = require("crypto");
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -261,14 +260,7 @@ exports.login = async (req, res) => {
     //   });
     // }
 
-    // Find employee in our employee data
-    const employee = findEmployeeByEmail(email);
-    if (!employee) {
-      return res.status(401).json({
-        success: false,
-        message: "Email not found in employee records",
-      });
-    }
+    // Skip employee validation - check database directly
 
     // Find or create user in database
     let user = await User.findOne({ email: email.toLowerCase() });
@@ -278,12 +270,12 @@ exports.login = async (req, res) => {
       const userData = {
         email: email.toLowerCase(),
         password: "DefaultPassword123!", // Required by schema but won't be used
-        firstName: employee.name.split(' ')[0] || "",
-        lastName: employee.name.split(' ').slice(1).join(' ') || "",
+        firstName: "User", // Default values
+        lastName: "Account",
         companyId: "6975e43e400dcc89c6f92463", // CACPM company ID
-        emailVerified: true, // Auto-verify since it's in employee list
+        emailVerified: true, // Auto-verify
         isActive: true,
-        role: employee.role || "user"
+        role: "user" // Default role
       };
 
       user = new User(userData);
@@ -359,13 +351,8 @@ exports.login = async (req, res) => {
 
     res.cookie("token", token, cookieOptions);
 
-    // Return user data with employee information
+    // Return user data
     const userData = user.toJSON();
-    userData.employeeInfo = {
-      name: employee.name,
-      position: employee.position,
-      department: employee.department
-    };
 
     res.status(200).json({
       success: true,
@@ -671,7 +658,7 @@ exports.forgotPassword = async (req, res) => {
 
         // Prepare reset URL
 
-        const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${resetToken}`;
 
         console.log("🔗 Reset URL generated");
 

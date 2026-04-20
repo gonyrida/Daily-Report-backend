@@ -35,6 +35,12 @@ const weeklyReportSchema = new mongoose.Schema({
     trim: true,
     index: true
   },
+  projectId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Project',
+    required: false, // Optional for existing reports
+    index: true
+  },
   weekNumber: {
     type: Number,
     required: true,
@@ -66,6 +72,7 @@ const weeklyReportSchema = new mongoose.Schema({
       weekNumber: String,
       dateRange: String,
       coverImage: String,
+      clientLogo: String,
       projectTitle: String,
       employer: String,
       contractorName: { type: String, default: "Cambodian Advanced Construction Project Management (CACPM) Co., Ltd" }
@@ -187,6 +194,8 @@ const weeklyReportSchema = new mongoose.Schema({
         items: [{
           code: String,
           description: String,
+          issuedBy: String,
+          issuedDate: String,
           status: String,
           dateResponded: String
         }],
@@ -196,6 +205,8 @@ const weeklyReportSchema = new mongoose.Schema({
         items: [{
           code: String,
           description: String,
+          receivedDate: String,
+          inspectionDate: String,
           status: String,
           dateResponded: String
         }],
@@ -527,5 +538,13 @@ weeklyReportSchema.methods.updateStatus = function(newStatus, userId) {
   
   return this.save();
 };
+
+// Add compound indexes for common query patterns
+weeklyReportSchema.index({ projectId: 1, status: 1 });
+weeklyReportSchema.index({ userId: 1, createdAt: -1 });
+weeklyReportSchema.index({ companyId: 1, status: 1, createdAt: -1 });
+weeklyReportSchema.index({ projectName: 'text', status: 'text' }); // For search functionality
+weeklyReportSchema.index({ weekNumber: 1, projectId: 1 });
+weeklyReportSchema.index({ status: 1, startDate: -1 });
 
 module.exports = mongoose.model('WeeklyReport', weeklyReportSchema);

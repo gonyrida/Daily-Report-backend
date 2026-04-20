@@ -8,13 +8,14 @@ const weeklyReportRoutes = require("./routes/weeklyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
 const dailyReportImageRoutes = require("./routes/dailyReportImageRoutes");
-const projectRoutes = require("./routes/projectRoutes");
+const projectRoutes = require('./routes/projectRoutes');
+const folderRoutes = require('./routes/folderRoutes');
 const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
-const env = require("./config/env"); // Add this line
+// dotenv.config() is already called in server.js
 
 const app = express();
 
@@ -97,6 +98,7 @@ app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
 app.use("/api/daily-reports-images", authenticateToken, dailyReportImageRoutes);
 app.use("/api/weekly-reports", authenticateToken, weeklyReportRoutes);
 app.use("/api/projects", authenticateToken, projectRoutes);
+app.use("/api/folders", authenticateToken, folderRoutes);
 app.use("/api/images", authenticateToken, imageRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
@@ -197,7 +199,7 @@ app.get("/health", async (req, res) => {
         api: {
           status: 'running',
           version: process.env.npm_package_version || '1.0.0',
-          environment: env.NODE_ENV || 'development'
+          environment: process.env.NODE_ENV || 'development'
         }
       },
       system: {
@@ -257,7 +259,7 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     success: false,
     message: err.message || "Something broke!",
-    error: env.NODE_ENV === "development" ? err.stack : undefined,
+    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 });
 

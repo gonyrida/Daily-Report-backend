@@ -4,7 +4,7 @@ const path = require("path");
 
 const fs = require("fs");
 
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 // Configure storage
 const storage = multer.diskStorage({
@@ -89,7 +89,7 @@ const uploadImage = async (req, res) => {
     }
 
     // Generate user-specific public URL
-    const baseUrl = env.BASE_URL;
+    const baseUrl = process.env.BASE_URL;
     const imageUrl = `${baseUrl}/uploads/images/${userId}/${req.file.filename}`;
 
     res.status(200).json({
@@ -131,7 +131,7 @@ const uploadMultipleImages = async (req, res) => {
     }
 
     // Generate user-specific public URLs
-    const baseUrl = env.BASE_URL;
+    const baseUrl = process.env.BASE_URL;
     const imageUrls = req.files.map(
       (file) => `${baseUrl}/uploads/images/${userId}/${file.filename}`,
     );
@@ -252,7 +252,7 @@ const uploadProfilePicture = async (req, res) => {
       console.error("Error uploading to Supabase:", uploadError);
       
       // Fallback to local file URL if Supabase fails
-      const baseUrl = env.BASE_URL;
+      const baseUrl = process.env.BASE_URL;
       const localUrl = `${baseUrl}/uploads/images/${userId}/${req.file.filename}`;
       
       user.profilePicture = localUrl;

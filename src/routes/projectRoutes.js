@@ -6,7 +6,9 @@ const router = express.Router();
 // Routes are already protected by authenticateToken in app.js
 router.post('/', projectController.createProject);
 router.get('/', projectController.getUserProjects);
+router.get('/:id', projectController.getProjectById);
 router.put('/:id', projectController.updateProject);
+router.put('/:id/move-to-folder', projectController.moveProjectToFolder);
 router.delete('/:id', projectController.deleteProject);
 
 module.exports = router;

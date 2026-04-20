@@ -2,6 +2,7 @@ const dailyReportImageService = require("./dailyReportImageService");
 const { uploadImageToSupabase, getPublicUrl, listFilesInSupabase } = require("../integrations/supabase/server");
 const DailyReport = require("../models/dailyReportModel.js");
 const User = require("../models/userModel.js");
+const mongoose = require('mongoose');
 /**
  * Get images from Supabase and store in HSE section
  */
@@ -557,22 +558,63 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     endOfDay.setUTCHours(23, 59, 59, 999);
 
 
-    // Find existing report for this user, project, date, AND location
-    const query = {
-      userId,
-      projectName,
-      reportDate: { $gte: startOfDay, $lte: endOfDay },
-    };
+    // Find existing report - check by reportId first, then projectId+date, then projectName+date
+    let report = null;
     
-    // Add location to query if provided
-    if (reportData.location) {
-      query.location = reportData.location;
+    // 1. If reportId provided, find by reportId (draft being saved)
+    if (reportData.reportId) {
+      report = await DailyReport.findById(reportData.reportId).session(session);
     }
     
-    let report = await DailyReport.findOne(query).session(session);
+    // 2. If not found and projectId provided, find by projectId + date (handles renamed projects)
+    if (!report && reportData.projectId) {
+      const projectIdQuery = {
+        userId,
+        projectId: reportData.projectId,
+        reportDate: { $gte: startOfDay, $lte: endOfDay },
+      };
+      
+      // Add location to query if provided
+      if (reportData.location) {
+        projectIdQuery.location = reportData.location;
+      }
+      
+      // Add folderId to query if provided
+      if (reportData.folderId) {
+        projectIdQuery.folderId = reportData.folderId;
+      } else {
+        projectIdQuery.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+      }
+      
+      report = await DailyReport.findOne(projectIdQuery).session(session);
+    }
+    
+    // 3. If still not found, fallback to projectName + date (backward compatibility)
+    if (!report) {
+      const query = {
+        userId,
+        projectName,
+        reportDate: { $gte: startOfDay, $lte: endOfDay },
+      };
+      
+      // Add location to query if provided
+      if (reportData.location) {
+        query.location = reportData.location;
+      }
+      
+      // Add folderId to query if provided (to separate reports in different folders)
+      if (reportData.folderId) {
+        query.folderId = reportData.folderId;
+      } else {
+        // If no folderId specified, match reports without a folder (project root level)
+        query.$or = [{ folderId: { $exists: false } }, { folderId: null }];
+      }
+      
+      report = await DailyReport.findOne(query).session(session);
+    }
 
 
-    // 🔥 FIX #1: Get the previous report with projectName AND location filter
+    // 🔥 FIX #1: Get the previous report with projectName, location, AND folder filter
     const previousReportQuery = {
       userId,
       projectName,  // ← CRITICAL FIX: Must match same project!
@@ -582,6 +624,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     // Add location to previous report query if current location is provided
     if (reportData.location) {
       previousReportQuery.location = reportData.location;
+    }
+    
+    // Add folderId to previous report query if provided
+    if (reportData.folderId) {
+      previousReportQuery.folderId = reportData.folderId;
     }
     
     const previousReport = await DailyReport.findOne(previousReportQuery)
@@ -677,6 +724,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     if (report) {
       // Update existing report
       
+      // Update projectId if provided (allows migrating old reports to new project linking)
+      if (reportData.projectId && !report.projectId) {
+        report.projectId = reportData.projectId;
+      }
+      
       // Update text fields with strategy using processed data
       report.location = updateTextField(report.location, processedReportData.location, 'replace');
       report.description = updateTextField(report.description, processedReportData.description, 'replace');
@@ -708,8 +760,10 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
 
       const newReportData = {
         userId,
-        companyId, // ← ADD THIS
-        createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
+        companyId,
+        createdBy: userFullName,
+        // Add projectId if provided (for reliable project linking)
+        ...(reportData.projectId && { projectId: reportData.projectId }),
         ...processedReportData, // 🚀 Use processed data with Supabase URLs
         managementTeam,
         workingTeamInterior,
@@ -717,9 +771,12 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         workingTeam, // Keep backward compatibility
         materials,
         machinery,
-        activities, // NEW: Add activities field
+        activities,
         status: "draft",
         lastUpdated: new Date(),
+        // Add folder info if provided
+        ...(reportData.folderId && { folderId: reportData.folderId }),
+        ...(reportData.folderName && { folderName: reportData.folderName }),
       };
       
       report = new DailyReport(newReportData);
@@ -766,6 +823,11 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
     // Add location to future reports query if current location is provided
     if (reportData.location) {
       futureReportsQuery.location = reportData.location;
+    }
+    
+    // Add folderId to future reports query if provided
+    if (reportData.folderId) {
+      futureReportsQuery.folderId = reportData.folderId;
     }
     
     const futureReports = await DailyReport.find(futureReportsQuery)
@@ -846,8 +908,9 @@ const createNewReport = async (userId, projectName, reportDate, companyId) => {
     const report = new DailyReport({
       userId,
       companyId,
-      createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
+      createdBy: userFullName, // Auto-populate from authenticated user
       projectName: projectName ,
+      projectId: reportData.projectId || null, // Add projectId support
       ...processedReportData, // Use processed data with Supabase URLs
       reportDate,
       status: "draft",
@@ -963,18 +1026,63 @@ const autoSaveReport = async (userId, reportId, partialData) => {
 /**
  * Get recent reports for dashboard, sorted by updatedAt
  */
-const getRecentReports = async (userId, limit = 20, statusFilter = null) => {
+const getRecentReports = async (userId, limit = 20, statusFilter = null, projectId = null) => {
   try {
+    console.log('🔍 DEBUG getRecentReports: INPUTS', { 
+      userId, 
+      limit, 
+      statusFilter, 
+      projectId: projectId || 'NONE',
+      projectIdType: typeof projectId
+    });
+    
+    // Build query - always use userId for My Reports tab
     const query = { userId };
     
     if (statusFilter) {
       query.status = statusFilter;
     }
+    
+    // Add projectId filter if provided (for personal reports within a project)
+    if (projectId) {
+      try {
+        query.projectId = new mongoose.Types.ObjectId(projectId);
+        console.log('🔥🔥🔥 NEW CODE DEBUG getRecentReports: Using userId + projectId for personal reports', {
+          userId,
+          originalProjectId: projectId,
+          query: JSON.stringify(query, null, 2)
+        });
+      } catch (error) {
+        console.error('❌ DEBUG getRecentReports: ObjectId conversion FAILED', {
+          projectId,
+          error: error.message,
+          query: JSON.stringify(query, null, 2)
+        });
+        // If invalid ObjectId, don't apply projectId filter
+      }
+    } else {
+      console.log('🔍 DEBUG getRecentReports: Using userId for all personal reports', {
+        query: JSON.stringify(query, null, 2)
+      });
+    }
 
+    console.log('🔍 DEBUG getRecentReports: Executing MongoDB query...');
     const reports = await DailyReport.find(query)
       .sort({ updatedAt: -1 })
       .limit(limit)
-      .select('projectName reportDate status updatedAt createdAt submittedAt');
+      .select('projectId projectName reportDate status updatedAt createdAt submittedAt');
+
+    console.log('✅ DEBUG getRecentReports: Query RESULTS', {
+      totalFound: reports.length,
+      reportsWithProjectId: reports.filter(r => r.projectId).length,
+      reportsWithoutProjectId: reports.filter(r => !r.projectId).length,
+      sampleReports: reports.slice(0, 3).map(r => ({
+        _id: r._id.toString(),
+        projectId: r.projectId?.toString() || 'NULL',
+        projectName: r.projectName,
+        status: r.status
+      }))
+    });
 
     return reports;
   } catch (error) {
@@ -1050,6 +1158,15 @@ const deleteReport = async (userId, reportId) => {
       return null;
     }
     
+    // Log folder status to verify reports without folders delete correctly
+    console.log("DEBUG BACKEND SERVICE: Report found:", { 
+      reportId: report._id, 
+      projectName: report.projectName,
+      folderId: report.folderId || null,
+      folderName: report.folderName || null,
+      hasFolder: !!report.folderId 
+    });
+    
     // Delete the report
     const result = await DailyReport.findOneAndDelete({
       _id: reportId,
@@ -1091,37 +1208,91 @@ const deleteReport = async (userId, reportId) => {
   }
 };
 
-const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "") => {
+const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "", projectIdFilter = "") => {
   try {
+    console.log('🔍 DEBUG getCompanyReports: INPUTS', { 
+      companyId, 
+      page, 
+      limit, 
+      search, 
+      projectFilter, 
+      projectIdFilter: projectIdFilter || 'NONE',
+      projectIdFilterType: typeof projectIdFilter
+    });
+
     const skip = (page - 1) * limit;
     
-    // Build search query
-    let searchQuery = search ? {
-      $and: [
-        { companyId },
-        { status: "submitted" },  // ← ADD THIS
-        {
-          $or: [
-            { projectName: { $regex: search, $options: "i" } },
-            { activityToday: { $regex: search, $options: "i" } },
-            { "userId.firstName": { $regex: search, $options: "i" } },
-            { "userId.lastName": { $regex: search, $options: "i" } }
-          ]
-        }
-      ]
-    } : { 
-      companyId,
-      status: "submitted"  // ← ADD THIS
-    };
-    // ADD PROJECT FILTER
-    if (projectFilter) {
+    // Build search query - prioritize projectId if provided
+    let searchQuery;
+    
+    if (projectIdFilter) {
+      // If projectId is provided, use it for company-wide access (no userId filter)
+      searchQuery = search ? {
+        $and: [
+          { companyId },
+          { status: "submitted" },
+          { projectId: new mongoose.Types.ObjectId(projectIdFilter) },
+          {
+            $or: [
+              { projectName: { $regex: search, $options: "i" } },
+              { activityToday: { $regex: search, $options: "i" } },
+              { "userId.firstName": { $regex: search, $options: "i" } },
+              { "userId.lastName": { $regex: search, $options: "i" } }
+            ]
+          }
+        ]
+      } : { 
+        companyId,
+        status: "submitted",
+        projectId: new mongoose.Types.ObjectId(projectIdFilter)
+      };
+      
+      console.log('✅ DEBUG getCompanyReports: Using projectId for company-wide access', {
+        projectIdFilter,
+        query: JSON.stringify(searchQuery, null, 2)
+      });
+    } else {
+      // No projectId, use regular company query
+      searchQuery = search ? {
+        $and: [
+          { companyId },
+          { status: "submitted" },
+          {
+            $or: [
+              { projectName: { $regex: search, $options: "i" } },
+              { activityToday: { $regex: search, $options: "i" } },
+              { "userId.firstName": { $regex: search, $options: "i" } },
+              { "userId.lastName": { $regex: search, $options: "i" } }
+            ]
+          }
+        ]
+      } : { 
+        companyId,
+        status: "submitted"
+      };
+      
+      console.log('🔍 DEBUG getCompanyReports: Using regular company query', {
+        query: JSON.stringify(searchQuery, null, 2)
+      });
+    }
+
+    // ADD PROJECT FILTER - Fallback to projectName if no projectId
+    if (!projectIdFilter && projectFilter) {
+      // Fallback to projectName for backward compatibility
       searchQuery = {
         $and: [
           searchQuery,
           { projectName: projectFilter }
         ]
       };
+      
+      console.log('🔍 DEBUG getCompanyReports: Added projectName filter', {
+        projectFilter,
+        query: JSON.stringify(searchQuery, null, 2)
+      });
     }
+    console.log('🔍 DEBUG getCompanyReports: Executing MongoDB query...');
+    
     const [reports, total] = await Promise.all([
       DailyReport.find(searchQuery)
         .sort({ reportDate: -1, updatedAt: -1 })
@@ -1130,6 +1301,18 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
         .populate('userId', 'firstName lastName email'),
       DailyReport.countDocuments(searchQuery)
     ]);
+    
+    console.log('✅ DEBUG getCompanyReports: Query RESULTS', {
+      totalFound: total,
+      reportsReturned: reports.length,
+      sampleReports: reports.slice(0, 3).map(r => ({
+        _id: r._id.toString(),
+        projectId: r.projectId?.toString() || 'NULL',
+        projectName: r.projectName,
+        status: r.status,
+        userId: r.userId?._id?.toString() || 'NULL'
+      }))
+    });
     
     return {
       success: true,
@@ -1152,9 +1335,25 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
   }
 };
 
-const getReportsByLocation = async (location = null, projectName = null) => {
+const getReportsByLocation = async (location = null, projectName = null, projectId = null) => {
   try {
-    const query = { projectName };
+    const query = { status: "submitted" };
+    
+    // Prioritize projectId if available, fallback to projectName
+    if (projectId) {
+      // Convert string projectId to ObjectId for proper MongoDB matching
+      try {
+        query.projectId = new mongoose.Types.ObjectId(projectId);
+      } catch (error) {
+        console.error('Invalid projectId format in getReportsByLocation:', projectId);
+        // If invalid ObjectId, fall back to projectName filter
+        if (projectName) {
+          query.projectName = projectName;
+        }
+      }
+    } else if (projectName) {
+      query.projectName = projectName;
+    }
     
     if (location) {
       query.location = location;

@@ -1,6 +1,5 @@
 require("dotenv").config();
 const app = require("./app");
-const env = require("./config/env");
 const cleanupScheduler = require("./utils/cleanupScheduler");
 
 const PORT = process.env.PORT || 5000;

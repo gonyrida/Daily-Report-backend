@@ -418,17 +418,29 @@ const autoSaveReport = async (req, res) => {
 const getRecentReports = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { limit = 20, status } = req.query;
+    const { limit = 20, status, projectId } = req.query;
     
-    console.log("DEBUG BACKEND CONTROLLER: Fetching recent reports for:", { userId, limit, status });
+    console.log("🔍 DEBUG CONTROLLER: getRecentReports called", { 
+      userId, 
+      limit: parseInt(limit), 
+      status, 
+      projectId: projectId || 'NONE',
+      projectIdType: typeof projectId,
+      fullQuery: req.query
+    });
 
     const reports = await dailyReportService.getRecentReports(
       userId, 
       parseInt(limit), 
-      status
+      status,
+      projectId
     );
     
-    console.log("DEBUG BACKEND CONTROLLER: Found", reports.length, "recent reports");
+    console.log("✅ DEBUG CONTROLLER: getRecentReports completed", {
+      reportsCount: reports.length,
+      reportsWithProjectId: reports.filter(r => r.projectId).length,
+      reportsWithoutProjectId: reports.filter(r => !r.projectId).length
+    });
     
     res.status(200).json({
       success: true,
@@ -465,7 +477,7 @@ const deleteReport = async (req, res) => {
 
 const getCompanyReports = async (req, res) => {
   try {
-    const { page = 1, limit = 20, search = "", project = "" } = req.query;
+    const { page = 1, limit = 20, search = "", project = "", projectId = "" } = req.query;
     const companyId = req.user.companyId;
 
     // Check if user has companyId
@@ -481,7 +493,8 @@ const getCompanyReports = async (req, res) => {
       parseInt(page),
       parseInt(limit),
       search,
-      project // ← ADD PROJECT FILTER
+      project, // Project name filter (legacy)
+      projectId // Project ID filter (new)
     );
 
     if (!result.success) {
@@ -556,8 +569,8 @@ const getLocations = async (req, res) => {
 
 const getDailyReportsByLocation = async (req, res) => {
   try {
-    const { location, projectName } = req.query;
-    const reports = await dailyReportService.getReportsByLocation(location, projectName);
+    const { location, projectName, projectId } = req.query;
+    const reports = await dailyReportService.getReportsByLocation(location, projectName, projectId);
     res.json(reports);
   } catch (error) {
     res.status(500).json({ error: error.message });

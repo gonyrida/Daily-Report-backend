@@ -4,8 +4,7 @@ const tokenBlacklistSchema = new mongoose.Schema({
   token: {
     type: String,
     required: true,
-    unique: true,
-    index: true
+    unique: true
   },
   userId: {
     type: mongoose.Schema.Types.ObjectId,
@@ -24,7 +23,7 @@ const tokenBlacklistSchema = new mongoose.Schema({
   }
 });
 
-// Index for efficient queries
-tokenBlacklistSchema.index({ token: 1, userId: 1 });
+// Index for efficient queries (token already has unique index)
+tokenBlacklistSchema.index({ userId: 1 });
 
 module.exports = mongoose.model('TokenBlacklist', tokenBlacklistSchema);

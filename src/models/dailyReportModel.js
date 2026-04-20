@@ -42,9 +42,27 @@ const dailyReportSchema = new mongoose.Schema(
       required: false, // ← IMPORTANT: Optional for existing reports
     },
 
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      required: false, // Optional for backward compatibility
+    },
+
     projectName: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    folderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Folder',
+      required: false,
+    },
+
+    folderName: {
+      type: String,
+      default: '',
       trim: true,
     },
 
@@ -264,11 +282,14 @@ const dailyReportSchema = new mongoose.Schema(
 );
 
 // Add indexes for faster queries and auto-save functionality
+dailyReportSchema.index({ projectId: 1, reportDate: -1 }); // Index by projectId for faster lookups
 dailyReportSchema.index({ projectName: 1, reportDate: 1 });
 dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
 dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
 dailyReportSchema.index({ companyId: 1, reportDate: -1 });
 dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1, location: 1 }, { unique: true }); // Prevent duplicate reports per location
+dailyReportSchema.index({ folderId: 1, reportDate: -1 }); // For folder queries
+dailyReportSchema.index({ projectName: 1, folderName: 1, reportDate: -1 }); // For folder-based queries
 
 const DailyReport = mongoose.model("DailyReport", dailyReportSchema);
 

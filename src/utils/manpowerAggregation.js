@@ -1,7 +1,7 @@
 const DailyReport = require('../models/dailyReportModel');
 const WeeklyReport = require('../models/WeeklyReport');
 const { MongoClient } = require('mongodb');
-const { MONGODB_URI } = require('../config/env');
+// dotenv.config() is already called in server.js
 
 /**
  * Get the day of week mapping for a given date
@@ -517,7 +517,7 @@ const aggregateManpowerData = async (projectName, startDate, endDate, options = 
     console.log(`Fetching daily reports for project: ${projectName}, dates: ${start.toISOString()} to ${end.toISOString()}`);
     
     let dailyReports;
-    const client = new MongoClient(MONGODB_URI);
+    const client = new MongoClient(process.env.MONGODB_URI);
     
     try {
       await client.connect();
