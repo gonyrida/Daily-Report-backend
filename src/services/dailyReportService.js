@@ -2,6 +2,7 @@ const dailyReportImageService = require("./dailyReportImageService");
 const { uploadImageToSupabase, getPublicUrl, listFilesInSupabase } = require("../integrations/supabase/server");
 const DailyReport = require("../models/dailyReportModel.js");
 const User = require("../models/userModel.js");
+const mongoose = require('mongoose');
 /**
  * Get images from Supabase and store in HSE section
  */
@@ -1025,18 +1026,63 @@ const autoSaveReport = async (userId, reportId, partialData) => {
 /**
  * Get recent reports for dashboard, sorted by updatedAt
  */
-const getRecentReports = async (userId, limit = 20, statusFilter = null) => {
+const getRecentReports = async (userId, limit = 20, statusFilter = null, projectId = null) => {
   try {
+    console.log('🔍 DEBUG getRecentReports: INPUTS', { 
+      userId, 
+      limit, 
+      statusFilter, 
+      projectId: projectId || 'NONE',
+      projectIdType: typeof projectId
+    });
+    
+    // Build query - always use userId for My Reports tab
     const query = { userId };
     
     if (statusFilter) {
       query.status = statusFilter;
     }
+    
+    // Add projectId filter if provided (for personal reports within a project)
+    if (projectId) {
+      try {
+        query.projectId = new mongoose.Types.ObjectId(projectId);
+        console.log('🔥🔥🔥 NEW CODE DEBUG getRecentReports: Using userId + projectId for personal reports', {
+          userId,
+          originalProjectId: projectId,
+          query: JSON.stringify(query, null, 2)
+        });
+      } catch (error) {
+        console.error('❌ DEBUG getRecentReports: ObjectId conversion FAILED', {
+          projectId,
+          error: error.message,
+          query: JSON.stringify(query, null, 2)
+        });
+        // If invalid ObjectId, don't apply projectId filter
+      }
+    } else {
+      console.log('🔍 DEBUG getRecentReports: Using userId for all personal reports', {
+        query: JSON.stringify(query, null, 2)
+      });
+    }
 
+    console.log('🔍 DEBUG getRecentReports: Executing MongoDB query...');
     const reports = await DailyReport.find(query)
       .sort({ updatedAt: -1 })
       .limit(limit)
       .select('projectId projectName reportDate status updatedAt createdAt submittedAt');
+
+    console.log('✅ DEBUG getRecentReports: Query RESULTS', {
+      totalFound: reports.length,
+      reportsWithProjectId: reports.filter(r => r.projectId).length,
+      reportsWithoutProjectId: reports.filter(r => !r.projectId).length,
+      sampleReports: reports.slice(0, 3).map(r => ({
+        _id: r._id.toString(),
+        projectId: r.projectId?.toString() || 'NULL',
+        projectName: r.projectName,
+        status: r.status
+      }))
+    });
 
     return reports;
   } catch (error) {
@@ -1164,37 +1210,74 @@ const deleteReport = async (userId, reportId) => {
 
 const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", projectFilter = "", projectIdFilter = "") => {
   try {
+    console.log('🔍 DEBUG getCompanyReports: INPUTS', { 
+      companyId, 
+      page, 
+      limit, 
+      search, 
+      projectFilter, 
+      projectIdFilter: projectIdFilter || 'NONE',
+      projectIdFilterType: typeof projectIdFilter
+    });
+
     const skip = (page - 1) * limit;
     
-    // Build search query
-    let searchQuery = search ? {
-      $and: [
-        { companyId },
-        { status: "submitted" },
-        {
-          $or: [
-            { projectName: { $regex: search, $options: "i" } },
-            { activityToday: { $regex: search, $options: "i" } },
-            { "userId.firstName": { $regex: search, $options: "i" } },
-            { "userId.lastName": { $regex: search, $options: "i" } }
-          ]
-        }
-      ]
-    } : { 
-      companyId,
-      status: "submitted"
-    };
-
-    // ADD PROJECT FILTER - Prioritize projectId if available, fallback to projectName
+    // Build search query - prioritize projectId if provided
+    let searchQuery;
+    
     if (projectIdFilter) {
-      // Use projectId for more reliable lookup (works even if project name changed)
-      searchQuery = {
+      // If projectId is provided, use it for company-wide access (no userId filter)
+      searchQuery = search ? {
         $and: [
-          searchQuery,
-          { projectId: projectIdFilter }
+          { companyId },
+          { status: "submitted" },
+          { projectId: new mongoose.Types.ObjectId(projectIdFilter) },
+          {
+            $or: [
+              { projectName: { $regex: search, $options: "i" } },
+              { activityToday: { $regex: search, $options: "i" } },
+              { "userId.firstName": { $regex: search, $options: "i" } },
+              { "userId.lastName": { $regex: search, $options: "i" } }
+            ]
+          }
         ]
+      } : { 
+        companyId,
+        status: "submitted",
+        projectId: new mongoose.Types.ObjectId(projectIdFilter)
       };
-    } else if (projectFilter) {
+      
+      console.log('✅ DEBUG getCompanyReports: Using projectId for company-wide access', {
+        projectIdFilter,
+        query: JSON.stringify(searchQuery, null, 2)
+      });
+    } else {
+      // No projectId, use regular company query
+      searchQuery = search ? {
+        $and: [
+          { companyId },
+          { status: "submitted" },
+          {
+            $or: [
+              { projectName: { $regex: search, $options: "i" } },
+              { activityToday: { $regex: search, $options: "i" } },
+              { "userId.firstName": { $regex: search, $options: "i" } },
+              { "userId.lastName": { $regex: search, $options: "i" } }
+            ]
+          }
+        ]
+      } : { 
+        companyId,
+        status: "submitted"
+      };
+      
+      console.log('🔍 DEBUG getCompanyReports: Using regular company query', {
+        query: JSON.stringify(searchQuery, null, 2)
+      });
+    }
+
+    // ADD PROJECT FILTER - Fallback to projectName if no projectId
+    if (!projectIdFilter && projectFilter) {
       // Fallback to projectName for backward compatibility
       searchQuery = {
         $and: [
@@ -1202,7 +1285,14 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
           { projectName: projectFilter }
         ]
       };
+      
+      console.log('🔍 DEBUG getCompanyReports: Added projectName filter', {
+        projectFilter,
+        query: JSON.stringify(searchQuery, null, 2)
+      });
     }
+    console.log('🔍 DEBUG getCompanyReports: Executing MongoDB query...');
+    
     const [reports, total] = await Promise.all([
       DailyReport.find(searchQuery)
         .sort({ reportDate: -1, updatedAt: -1 })
@@ -1211,6 +1301,18 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
         .populate('userId', 'firstName lastName email'),
       DailyReport.countDocuments(searchQuery)
     ]);
+    
+    console.log('✅ DEBUG getCompanyReports: Query RESULTS', {
+      totalFound: total,
+      reportsReturned: reports.length,
+      sampleReports: reports.slice(0, 3).map(r => ({
+        _id: r._id.toString(),
+        projectId: r.projectId?.toString() || 'NULL',
+        projectName: r.projectName,
+        status: r.status,
+        userId: r.userId?._id?.toString() || 'NULL'
+      }))
+    });
     
     return {
       success: true,
@@ -1239,7 +1341,16 @@ const getReportsByLocation = async (location = null, projectName = null, project
     
     // Prioritize projectId if available, fallback to projectName
     if (projectId) {
-      query.projectId = projectId;
+      // Convert string projectId to ObjectId for proper MongoDB matching
+      try {
+        query.projectId = new mongoose.Types.ObjectId(projectId);
+      } catch (error) {
+        console.error('Invalid projectId format in getReportsByLocation:', projectId);
+        // If invalid ObjectId, fall back to projectName filter
+        if (projectName) {
+          query.projectName = projectName;
+        }
+      }
     } else if (projectName) {
       query.projectName = projectName;
     }
