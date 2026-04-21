@@ -522,7 +522,7 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
     }
 
     const currentIdx = ROLE_ORDER.indexOf(role);
-    if (currentIdx > 0) {
+    if (currentIdx > 0 && workflowStep.role !== 'approved') {
       const earlierIncomplete = purchaseRequest.approvalWorkflow
         .filter(s => ROLE_ORDER.indexOf(s.role) < currentIdx)
         .some(s => s.status !== 'approved' && s.status !== 'rejected' && s.status !== 'completed');
@@ -535,7 +535,6 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
     }
 
     // Update workflow step for approval
-    // workflowStep.approver = approverId;
     workflowStep.actedBy = approverId;
     workflowStep.status = 'approved';
     workflowStep.timestamp = new Date();
@@ -572,7 +571,7 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
 
     if (hasRejection) {
       purchaseRequest.status = 'rejected';
-    } else if (allApproved) {
+    } else if (allApproved || workflowStep.role === 'approved') {
       purchaseRequest.status = 'approved';
     } else {
       purchaseRequest.status = 'pending';
@@ -856,12 +855,16 @@ exports.updatePurchaseRequest = async (req, res) => {
         projectCounter = project.counter;
       } else if (status === 'draft' && purchaseRequest.status === 'draft') {
         projectCounter = 0;
+      } else {
+        projectCounter = purchaseRequest.no;
       }
     } else {
       if (status === 'pending' && purchaseRequest.status === 'draft') {
         projectCounter = 1;
       } else if (status === 'draft' && purchaseRequest.status === 'draft') {
         projectCounter = 0;
+      } else {
+        projectCounter = purchaseRequest.no;
       }
     }
 
@@ -869,7 +872,7 @@ exports.updatePurchaseRequest = async (req, res) => {
     purchaseRequest.requesterName = requesterName;
     purchaseRequest.requesterDepartment = requesterDepartment;
     purchaseRequest.no = projectCounter;
-    purchaseRequest.label = `MR #${projectCounter}`;
+    purchaseRequest.label = purchaseRequest.version > 0 ? `MR #${projectCounter} (R${purchaseRequest.version})` : `MR #${projectCounter}`;
     purchaseRequest.projectName = projectName;
     purchaseRequest.projectFrom = projectFrom;
     purchaseRequest.purpose = purpose;
