@@ -1312,15 +1312,14 @@ const getBulkImportStats = async (userId) => {
 /**
  * Aggregate manpower data for a weekly report
  * @param {string} projectName - Project name
- * @param {Date} startDate - Week start date
- * @param {Date} endDate - Week end date
- * @param {Object} options - Options for aggregation
+ * @param {Date} startDate - Week start date (Friday)
+ * @param {Date} endDate - Week end date (Thursday)
+ * @param {Object} options - Options for aggregation (includePrevWeek, includeAccumulated, projectId)
  * @returns {Promise<Object>} - Aggregated manpower data
  */
 const aggregateWeeklyManpower = async (projectName, startDate, endDate, options = {}) => {
-  return await aggregateManpowerData(projectName, startDate, endDate, options);
+  return await aggregateManpowerData(projectName, startDate, endDate, { ...options, projectId: options.projectId });
 };
-
 /**
  * Update weekly report with aggregated manpower data
  * @param {string} reportId - Weekly report ID

@@ -10,9 +10,9 @@ const generalLimiter = rateLimit({
   },
   standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
   legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  keyGenerator: (req) => {
-    return req.ip;
-  }
+  // keyGenerator: (req) => {
+  //   return req.ip;
+  // }
 });
 
 // Strict rate limiting for authentication endpoints
@@ -26,9 +26,9 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skipSuccessfulRequests: true, // Don't count successful requests
-  keyGenerator: (req) => {
-    return req.ip;
-  }
+  // keyGenerator: (req) => {
+  //   return req.ip;
+  // }
 });
 
 // Rate limiting for sensitive operations (password reset, etc.)
@@ -41,9 +41,9 @@ const sensitiveLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.ip;
-  }
+  // keyGenerator: (req) => {
+  //   return req.ip;
+  // }
 });
 
 // Rate limiting for Excel export (resource intensive)
@@ -56,9 +56,9 @@ const exportLimiter = rateLimit({
   },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => {
-    return req.ip;
-  }
+  // keyGenerator: (req) => {
+  //   return req.ip;
+  // }
 });
 
 module.exports = {
