@@ -245,9 +245,23 @@ const createReport = async (userId, companyId, reportData) => {
       masterSchedule: reportData.sections?.masterSchedule || []
     };
 
+    // Resolve projectId: use provided value, otherwise look it up by project name
+    let resolvedProjectId = reportData.projectId || null;
+    if (!resolvedProjectId && reportData.projectName && companyId) {
+      try {
+        const Project = require('../models/projectModel');
+        const project = await Project.findOne({
+          name: { $regex: new RegExp(`^${reportData.projectName}$`, 'i') },
+          companyId,
+          isActive: true
+        });
+        if (project) resolvedProjectId = project._id;
+      } catch (_) { /* non-fatal */ }
+    }
+
     const report = new WeeklyReport({
       projectName: reportData.projectName,
-      projectId: reportData.projectId,  // ← add this
+      projectId: resolvedProjectId,
       weekNumber: reportData.weekNumber,
       startDate,
       endDate,

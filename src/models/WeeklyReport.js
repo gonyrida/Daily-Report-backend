@@ -302,18 +302,32 @@ const weeklyReportSchema = new mongoose.Schema({
       }],
       firstAidAccident: String,
       otherActivities: String,
-      hsePhotoReferences: [{
-        id: String,
-        title: String,
-        entries: [{
+      hsePhotoReferences: {
+        hseToolboxMeeting: [{
           id: String,
-          slots: [{
+          title: String,
+          entries: [{
             id: String,
-            image: String,
-            caption: String
+            slots: [{
+              id: String,
+              image: String,
+              caption: String
+            }]
+          }]
+        }],
+        hseActivityPhotos: [{
+          id: String,
+          title: String,
+          entries: [{
+            id: String,
+            slots: [{
+              id: String,
+              image: String,
+              caption: String
+            }]
           }]
         }]
-      }]
+      }
     },
     
     resources: {
