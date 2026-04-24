@@ -2,6 +2,7 @@
 // Material Controller - CRUD operations
 
 const Material = require('../models/materialModel');
+const User = require("../../../models/userModel");
 
 /**
  * @desc    Get all materials with pagination, filtering, and search
@@ -124,6 +125,19 @@ exports.getMaterialById = async (req, res) => {
 exports.createMaterial = async (req, res) => {
   const { code, description, reference, unit, unitPrice, brand, status } = req.body;
 
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found"
+    });
+  } else if (user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "User not authorized"
+    }); 
+  }
+
   // Validation
   if (!code || !description || !unit || !unitPrice || !brand) {
     return res.status(400).json({
@@ -172,6 +186,19 @@ exports.createMaterial = async (req, res) => {
 exports.updateMaterial = async (req, res) => {
   const { code, description, reference, unit, unitPrice, brand, status } = req.body;
 
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found"
+    });
+  } else if (user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "User not authorized"
+    }); 
+  }
+
   const material = await Material.findById(req.params.id);
   if (!material) {
     return res.status(404).json({
@@ -219,6 +246,19 @@ exports.updateMaterial = async (req, res) => {
  * @access  Private
  */
 exports.deleteMaterial = async (req, res) => {
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found"
+    });
+  } else if (user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "User not authorized"
+    }); 
+  }
+
   const material = await Material.findById(req.params.id);
   if (!material) {
     return res.status(404).json({
@@ -241,6 +281,19 @@ exports.deleteMaterial = async (req, res) => {
  * @access  Private
  */
 exports.bulkDeleteMaterials = async (req, res) => {
+  const user = await User.findById(req.user.userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: "User not found"
+    });
+  } else if (user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "User not authorized"
+    }); 
+  }
+
   const { ids } = req.body;
 
   if (!Array.isArray(ids) || ids.length === 0) {

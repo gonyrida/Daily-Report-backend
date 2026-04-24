@@ -280,6 +280,7 @@ exports.getPRProjects = async (req, res) => {
             _id: 1,
             name: 1,
             createdAt: 1,
+            visibility: 1,
             projectCode: 1,
             subProjects: {
               $cond: {

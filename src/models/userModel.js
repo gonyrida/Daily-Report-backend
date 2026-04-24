@@ -148,8 +148,7 @@ userSchema.virtual("accountStatus").get(function () {
 userSchema.set("toJSON", { virtuals: true });
 userSchema.set("toObject", { virtuals: true });
 
-// Indexes
-userSchema.index({ email: 1 }, { unique: true });
+// Indexes (email index is already defined by unique: true in schema)
 userSchema.index({ createdAt: 1 });
 userSchema.index({ companyId: 1 });
 

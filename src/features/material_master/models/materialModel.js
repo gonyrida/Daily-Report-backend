@@ -18,7 +18,7 @@ const materialSchema = new mongoose.Schema(
       type: String,
       required: [true, 'Material description is required'],
       trim: true,
-      minlength: [10, 'Description must be at least 10 characters'],
+      minlength: [5, 'Description must be at least 5 characters'],
       maxlength: [500, 'Description cannot exceed 500 characters']
     },
     reference: {

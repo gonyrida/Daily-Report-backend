@@ -4,9 +4,12 @@ const cookieParser = require("cookie-parser");
 const path = require("path");
 const connectDB = require("./config/db");
 const dailyReportRoutes = require("./routes/dailyReportRoutes");
+const weeklyReportRoutes = require("./routes/weeklyReportRoutes");
 const authRoutes = require("./routes/authRoutes");
 const imageRoutes = require("./routes/imageRoutes");
-const projectRoutes = require("./routes/projectRoutes");
+const dailyReportImageRoutes = require("./routes/dailyReportImageRoutes");
+const projectRoutes = require('./routes/projectRoutes');
+const folderRoutes = require('./routes/folderRoutes');
 const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
@@ -15,7 +18,7 @@ const adminRoutes = require("./features/admin_dashboard/routes/adminRoutes");
 const purchaseRequestRoutes = require("./features/purchase_request/routes/purchaseRequestRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
-const env = require("./config/env"); // Add this line
+// dotenv.config() is already called in server.js
 
 const app = express();
 
@@ -36,7 +39,7 @@ app.use(
       if (!origin) return callback(null, true);
 
       const allowedOrigins = [
-        "https://daily-report-frontend.officemuckup.com",
+        "https://a.cambodiacpm.com",
         "http://localhost:8080",
         "http://10.10.20.122:8080", // Added for current development setup
         "http://localhost:3000", // In case frontend runs on different port
@@ -95,7 +98,10 @@ app.use(
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/refresh-token", authLimiter, require("./routes/refreshTokenRoutes"));
 app.use("/api/daily-reports", authenticateToken, dailyReportRoutes);
+app.use("/api/daily-reports-images", authenticateToken, dailyReportImageRoutes);
+app.use("/api/weekly-reports", authenticateToken, weeklyReportRoutes);
 app.use("/api/projects", authenticateToken, projectRoutes);
+app.use("/api/folders", authenticateToken, folderRoutes);
 app.use("/api/images", authenticateToken, imageRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
@@ -103,6 +109,12 @@ app.use("/api/notifications", authenticateToken, notificationRoutes);
 app.use("/api/admin", authenticateToken, adminRoutes);
 app.use("/api/purchase-requests", authenticateToken, purchaseRequestRoutes); //Add Purchase Request Routes
 app.use("/api/materials", authenticateToken, materialRoutes); // Add Material Routes
+
+// og:image
+app.get("/api/og-image", (_req, res) => {
+  const filePath = path.join(__dirname, "../public/og_image.png");
+  res.sendFile(filePath);
+});
 
 // Health check route
 app.get("/health", async (req, res) => {
@@ -193,7 +205,7 @@ app.get("/health", async (req, res) => {
         api: {
           status: 'running',
           version: process.env.npm_package_version || '1.0.0',
-          environment: env.NODE_ENV || 'development'
+          environment: process.env.NODE_ENV || 'development'
         }
       },
       system: {
@@ -253,7 +265,7 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({
     success: false,
     message: err.message || "Something broke!",
-    error: env.NODE_ENV === "development" ? err.stack : undefined,
+    error: process.env.NODE_ENV === "development" ? err.stack : undefined,
   });
 });
 

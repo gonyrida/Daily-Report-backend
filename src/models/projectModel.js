@@ -7,6 +7,17 @@ const projectSchema = new mongoose.Schema({
     trim: true,
     maxlength: [100, 'Project name cannot exceed 100 characters']
   },
+  folderId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Folder',
+    required: false, // Optional - projects can exist without a folder
+    default: null
+  },
+  folderName: {
+    type: String,
+    default: '',
+    trim: true
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
@@ -50,10 +61,11 @@ const projectSchema = new mongoose.Schema({
 });
 
 // Index for better query performance
-projectSchema.index({ isActive: 1 });  // ← Remove createdBy from index since we're not filtering by it
-projectSchema.index({ name: 1 }); // ← Remove unique constraint
+projectSchema.index({ isActive: 1 });  
+projectSchema.index({ name: 1 }); 
 projectSchema.index({ companyId: 1, isActive: 1 });
-projectSchema.index({ companyId: 1, name: 1 }); // For company-specific unique names
+projectSchema.index({ companyId: 1, name: 1 }); 
+projectSchema.index({ folderId: 1, isActive: 1 }); 
 
 const Project = mongoose.model('Project', projectSchema);
 

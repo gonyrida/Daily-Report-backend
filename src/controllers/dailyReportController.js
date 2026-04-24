@@ -1,6 +1,8 @@
 const dailyReportService = require("../services/dailyReportService");
 const notificationService = require("../services/notificationService");
 const DailyReport = require('../models/dailyReportModel');
+const { CAMBODIA_LOCATIONS } = require('../data/cambodiaLocations');
+const dailyReportImageService = require('../services/dailyReportImageService');
 
 // Get all reports for authenticated user
 const getDailyReports = async (req, res) => {
@@ -210,11 +212,7 @@ const upsertDailyReport = async (req, res) => {
 // Save or update report (kept for backward compatibility)
 const saveOrUpdateReport = async (req, res) => {
   try {
-    console.log("DEBUG BACKEND CONTROLLER: Save request received");
-    console.log('🔧 DEBUG: req.user:', req.user);
-    console.log('🔧 DEBUG: req.user.companyId:', req.user.companyId);
     const reportData = req.body;
-    console.log("DEBUG BACKEND CONTROLLER: Received reportData:", reportData);
     if (!reportData.reportDate)
       return res.status(400).json({ 
         success: false,
@@ -420,17 +418,29 @@ const autoSaveReport = async (req, res) => {
 const getRecentReports = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { limit = 20, status } = req.query;
+    const { limit = 20, status, projectId } = req.query;
     
-    console.log("DEBUG BACKEND CONTROLLER: Fetching recent reports for:", { userId, limit, status });
+    console.log("🔍 DEBUG CONTROLLER: getRecentReports called", { 
+      userId, 
+      limit: parseInt(limit), 
+      status, 
+      projectId: projectId || 'NONE',
+      projectIdType: typeof projectId,
+      fullQuery: req.query
+    });
 
     const reports = await dailyReportService.getRecentReports(
       userId, 
       parseInt(limit), 
-      status
+      status,
+      projectId
     );
     
-    console.log("DEBUG BACKEND CONTROLLER: Found", reports.length, "recent reports");
+    console.log("✅ DEBUG CONTROLLER: getRecentReports completed", {
+      reportsCount: reports.length,
+      reportsWithProjectId: reports.filter(r => r.projectId).length,
+      reportsWithoutProjectId: reports.filter(r => !r.projectId).length
+    });
     
     res.status(200).json({
       success: true,
@@ -467,7 +477,7 @@ const deleteReport = async (req, res) => {
 
 const getCompanyReports = async (req, res) => {
   try {
-    const { page = 1, limit = 20, search = "", project = "" } = req.query;
+    const { page = 1, limit = 20, search = "", project = "", projectId = "" } = req.query;
     const companyId = req.user.companyId;
 
     // Check if user has companyId
@@ -483,7 +493,8 @@ const getCompanyReports = async (req, res) => {
       parseInt(page),
       parseInt(limit),
       search,
-      project // ← ADD PROJECT FILTER
+      project, // Project name filter (legacy)
+      projectId // Project ID filter (new)
     );
 
     if (!result.success) {
@@ -545,6 +556,27 @@ const getCompanyProjects = async (req, res) => {
   }
 };
 
+const getLocations = async (req, res) => {
+  try {
+    res.status(200).json({
+      success: true,
+      locations: CAMBODIA_LOCATIONS
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+const getDailyReportsByLocation = async (req, res) => {
+  try {
+    const { location, projectName, projectId } = req.query;
+    const reports = await dailyReportService.getReportsByLocation(location, projectName, projectId);
+    res.json(reports);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
 module.exports = {
   getDailyReports,
   getReportById,
@@ -558,5 +590,7 @@ module.exports = {
   getRecentReports,
   deleteReport,
   getCompanyReports,
-  getCompanyProjects
+  getCompanyProjects,
+  getLocations,
+  getDailyReportsByLocation
 };

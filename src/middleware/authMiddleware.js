@@ -1,6 +1,6 @@
 const jwt = require("jsonwebtoken");
 
-const { JWT_SECRET } = require("../config/env");
+const JWT_SECRET = process.env.JWT_SECRET;
 
 const User = require("../models/userModel");
 
@@ -95,6 +95,7 @@ const authenticateToken = async (req, res, next) => {
     // Add user to request object with full user info
     req.user = {
       ...decoded,
+      userId: decoded.userId, // Ensure userId is properly set for controllers
       name: `${user.firstName} ${user.lastName}`, // Combine first + last name
       email: user.email, // Add user's email
       companyId: user.companyId, // ← ADD THIS LINE

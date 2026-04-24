@@ -4,7 +4,7 @@ const path = require("path");
 
 const fs = require("fs");
 
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 // Configure storage
 const storage = multer.diskStorage({
@@ -89,7 +89,7 @@ const uploadImage = async (req, res) => {
     }
 
     // Generate user-specific public URL
-    const baseUrl = env.BASE_URL;
+    const baseUrl = process.env.BASE_URL;
     const imageUrl = `${baseUrl}/uploads/images/${userId}/${req.file.filename}`;
 
     res.status(200).json({
@@ -131,7 +131,7 @@ const uploadMultipleImages = async (req, res) => {
     }
 
     // Generate user-specific public URLs
-    const baseUrl = env.BASE_URL;
+    const baseUrl = process.env.BASE_URL;
     const imageUrls = req.files.map(
       (file) => `${baseUrl}/uploads/images/${userId}/${file.filename}`,
     );
@@ -208,32 +208,66 @@ const uploadProfilePicture = async (req, res) => {
       }
     }
 
-    // Read uploaded file into memory and convert to base64 data URL
+    // Upload profile picture to Supabase instead of converting to base64
+    const { uploadImageToSupabase, getPublicUrl } = require("../integrations/supabase/server");
+    
     const filePath = req.file.path;
     const buffer = fs.readFileSync(filePath);
-    const base64 = buffer.toString("base64");
-    const dataUrl = `data:${req.file.mimetype};base64,${base64}`;
-
-    // Store data URL in database
-    user.profilePicture = dataUrl;
-    await user.save();
-
-    // Remove temporary uploaded file
+    const fileName = `profile-${userId}-${Date.now()}${path.extname(req.file.originalname)}`;
+    const supabasePath = `profile-pictures/${userId}/${fileName}`;
+    
     try {
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-    } catch (e) {
-      console.warn("Failed to delete temp upload file:", e.message);
-    }
+      // Upload to Supabase
+      const uploadResult = await uploadImageToSupabase(buffer, supabasePath);
+      
+      if (!uploadResult.success) {
+        throw new Error(`Supabase upload failed: ${uploadResult.error}`);
+      }
+      
+      // Get public URL
+      const { publicUrl } = await getPublicUrl(supabasePath);
+      
+      // Store Supabase URL in database
+      user.profilePicture = publicUrl;
+      await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Profile picture uploaded successfully",
-      data: {
-        profilePicture: dataUrl,
-        mimeType: req.file.mimetype,
-        size: req.file.size,
-      },
-    });
+      // Remove temporary uploaded file
+      try {
+        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      } catch (e) {
+        console.warn("Failed to delete temp upload file:", e.message);
+      }
+
+      res.status(200).json({
+        success: true,
+        message: "Profile picture uploaded successfully",
+        data: {
+          profilePicture: publicUrl,
+          supabasePath: supabasePath,
+          mimeType: req.file.mimetype,
+          size: req.file.size,
+        },
+      });
+    } catch (uploadError) {
+      console.error("Error uploading to Supabase:", uploadError);
+      
+      // Fallback to local file URL if Supabase fails
+      const baseUrl = process.env.BASE_URL;
+      const localUrl = `${baseUrl}/uploads/images/${userId}/${req.file.filename}`;
+      
+      user.profilePicture = localUrl;
+      await user.save();
+      
+      res.status(200).json({
+        success: true,
+        message: "Profile picture uploaded locally (Supabase unavailable)",
+        data: {
+          profilePicture: localUrl,
+          mimeType: req.file.mimetype,
+          size: req.file.size,
+        },
+      });
+    }
   } catch (error) {
     console.error("Error uploading profile picture:", error);
     res.status(500).json({

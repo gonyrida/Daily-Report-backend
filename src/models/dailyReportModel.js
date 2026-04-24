@@ -1,5 +1,21 @@
 const mongoose = require("mongoose");
 
+// Image metadata schema for Supabase storage
+const ImageMetadataSchema = new mongoose.Schema({
+  supabaseUrl: { type: String, default: "" },
+  supabasePath: { type: String, default: "" },
+  fileName: { type: String, default: "" },
+  fileSize: { type: Number, default: 0 },
+  fileType: { type: String, default: "" },
+  caption: { type: String, default: "" }
+}, { _id: false });
+
+// Use Mixed type for backward compatibility
+const ImageArraySchema = {
+  type: mongoose.Schema.Types.Mixed,
+  default: []
+};
+
 const ResourceSchema = new mongoose.Schema(
   {
     description: { type: String, default: "" },
@@ -26,9 +42,27 @@ const dailyReportSchema = new mongoose.Schema(
       required: false, // ← IMPORTANT: Optional for existing reports
     },
 
+    projectId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Project',
+      required: false, // Optional for backward compatibility
+    },
+
     projectName: {
       type: String,
       required: true,
+      trim: true,
+    },
+
+    folderId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Folder',
+      required: false,
+    },
+
+    folderName: {
+      type: String,
+      default: '',
       trim: true,
     },
 
@@ -119,7 +153,7 @@ const dailyReportSchema = new mongoose.Schema(
 
     hse: [{
       section_title: { type: String, default: "" },
-      images: [{ type: String }],
+      images: ImageArraySchema,
       footers: [{ type: String }]
     }],
 
@@ -130,9 +164,55 @@ const dailyReportSchema = new mongoose.Schema(
 
     site_ref: [{
       section_title: { type: String, default: "" },
-      images: [{ type: String }],
+      images: ImageArraySchema,
       footers: [{ type: String }]
     }],
+
+    // NEW: Add activities section for bulk import support
+    activities: {
+      weeklyActivities: [{
+        description: String,
+        percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
+        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        bulkImportId: String, // NEW: Track which bulk import batch this belongs to
+        addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        // Legacy support for old nested structure
+        percentage: String, // Keep for backward compatibility
+        subActivities: [{
+          description: String,
+          percentage: String,
+          subActivities: [{
+            description: String,
+            percentage: String,
+            subActivities: [{
+              description: String,
+              percentage: String
+            }]
+          }]
+        }]
+      }],
+      nextWeekPlan: [{
+        description: String,
+        percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
+        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        bulkImportId: String, // NEW: Track which bulk import batch this belongs to
+        addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        // Legacy support for old nested structure
+        percentage: String, // Keep for backward compatibility
+        subActivities: [{
+          description: String,
+          percentage: String,
+          subActivities: [{
+            description: String,
+            percentage: String,
+            subActivities: [{
+              description: String,
+              percentage: String
+            }]
+          }]
+        }]
+      }]
+    },
 
     description: {
       type: String,
@@ -140,7 +220,7 @@ const dailyReportSchema = new mongoose.Schema(
     },
 
     photo_groups: [{
-      images: [{ type: String }],
+      images: ImageArraySchema,
       date: { type: String },
       footers: [{ type: String }]
     }],
@@ -159,13 +239,17 @@ const dailyReportSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {
         description: "",
-        photo_groups: []
+        photo_groups: [{
+          images: ImageArraySchema,
+          date: String,
+          footers: [String]
+        }]
       },
     },
 
     projectLogo: {
-      type: String,  // Store base64 or URL
-      default: "",
+      type: mongoose.Schema.Types.Mixed,
+      default: ""
     },
 
     status: {
@@ -183,6 +267,13 @@ const dailyReportSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
     },
+
+    // Version for optimistic locking (concurrent edit protection)
+    version: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
   },
   {
     timestamps: true,
@@ -191,11 +282,14 @@ const dailyReportSchema = new mongoose.Schema(
 );
 
 // Add indexes for faster queries and auto-save functionality
+dailyReportSchema.index({ projectId: 1, reportDate: -1 }); // Index by projectId for faster lookups
 dailyReportSchema.index({ projectName: 1, reportDate: 1 });
 dailyReportSchema.index({ userId: 1, updatedAt: -1 }); // For recent reports
 dailyReportSchema.index({ userId: 1, status: 1, updatedAt: -1 }); // For drafts vs published
 dailyReportSchema.index({ companyId: 1, reportDate: -1 });
-dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1 }, { unique: true }); // Prevent duplicate reports
+dailyReportSchema.index({ userId: 1, projectName: 1, reportDate: 1, location: 1 }, { unique: true }); // Prevent duplicate reports per location
+dailyReportSchema.index({ folderId: 1, reportDate: -1 }); // For folder queries
+dailyReportSchema.index({ projectName: 1, folderName: 1, reportDate: -1 }); // For folder-based queries
 
 const DailyReport = mongoose.model("DailyReport", dailyReportSchema);
 

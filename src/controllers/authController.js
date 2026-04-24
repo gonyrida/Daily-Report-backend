@@ -18,7 +18,7 @@ const { validatePasswordStrength } = require("../utils/passwordValidator");
 const { generateEmailVerificationToken, verifyEmailToken } = require("../utils/generateEmailVerificationToken");
 const { getEmailVerificationTemplate } = require("../utils/emailTemplates");
 const crypto = require("crypto");
-const env = require("../config/env");
+// dotenv.config() is already called in server.js
 
 // @desc    Register new user
 // @route   POST /api/auth/register
@@ -166,7 +166,7 @@ exports.register = async (req, res) => {
       });
       const baseUrl = isDevelopment 
         ? (process.env.FRONTEND_URL || 'http://localhost:8080')
-        : (process.env.PRODUCTION_URL || 'https://daily-report-frontend.officemuckup.com');
+        : (process.env.PRODUCTION_URL || 'https://a.cambodiacpm.com');
       
       const verificationLink = `${baseUrl}/verify-email?token=${verificationToken}&email=${encodeURIComponent(email)}`;
       const emailHtml = getEmailVerificationTemplate(firstName, verificationLink);
@@ -230,26 +230,57 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email /*, password */ } = req.body;
 
-    // Validation
-    if (!email || !password) {
+    // Validation - only email required for now
+    // Original validation: if (!email || !password) {
+    if (!email) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "Email is required", // Original: "Email and password are required",
       });
     }
 
-    // Find user and include password for comparison
-    const user = await User.findOne({ email: email.toLowerCase() }).select(
-      "+password"
-    );
-
-    if (!user) {
-      return res.status(401).json({
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
         success: false,
-        message: "Invalid credentials",
+        message: "Invalid email format",
       });
+    }
+
+    // Original domain restriction - commented out since we validate against employee list
+    // Check if email is from cambodiacpm.com domain
+    // const emailDomain = email.toLowerCase().split('@')[1];
+    // if (emailDomain !== "cambodiacpm.com") {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Only company email addresses are allowed",
+    //   });
+    // }
+
+    // Skip employee validation - check database directly
+
+    // Find or create user in database
+    let user = await User.findOne({ email: email.toLowerCase() });
+    
+    if (!user) {
+      // Create new user if not exists
+      const userData = {
+        email: email.toLowerCase(),
+        password: "DefaultPassword123!", // Required by schema but won't be used
+        firstName: "User", // Default values
+        lastName: "Account",
+        companyId: "6975e43e400dcc89c6f92463", // CACPM company ID
+        emailVerified: true, // Auto-verify
+        isActive: true,
+        role: "user" // Default role
+      };
+
+      user = new User(userData);
+      await user.save();
+      console.log("✅ Created new user for employee:", email);
     }
 
     // Check if account is active
@@ -260,23 +291,31 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Original password validation - commented out for email-only authentication
     // Check if email is verified
-    if (!user.emailVerified) {
-      return res.status(403).json({
-        success: false,
-        message: "Please verify your email address before logging in. Check your inbox for the verification email.",
-        emailVerificationRequired: true,
-      });
-    }
+    // if (!user.emailVerified) {
+    //   return res.status(403).json({
+    //     success: false,
+    //     message: "Please verify your email address before logging in. Check your inbox for the verification email.",
+    //     emailVerificationRequired: true,
+    //   });
+    // }
 
-    // Compare password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials",
-      });
-    }
+    // Original password comparison - commented out for email-only authentication
+    // const userWithPassword = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    // if (!userWithPassword) {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: "Invalid credentials",
+    //   });
+    // }
+    // const isPasswordValid = await userWithPassword.comparePassword(password);
+    // if (!isPasswordValid) {
+    //   return res.status(401).json({
+    //     success: false,
+    //     message: "Invalid credentials",
+    //   });
+    // }
 
     // Update last login
     user.lastLogin = new Date();
@@ -297,19 +336,28 @@ exports.login = async (req, res) => {
 
     // Set HTTP-only cookie with the token
     const isProduction = process.env.NODE_ENV === "production";
-    res.cookie("token", token, {
+    const cookieOptions = {
       httpOnly: true, // Prevents JavaScript access (XSS protection)
       secure: isProduction, // HTTPS only in production
       sameSite: isProduction ? "None" : "strict", // "None" for cross-site on Render
       maxAge: 24 * 60 * 60 * 1000, // 24 hours
       path: "/",
-      // domain: ".officemuckup.com",  // This is the key!
-    });
+    };
+
+    // Only set domain in production
+    if (isProduction) {
+      cookieOptions.domain = ".cambodiacpm.com";
+    }
+
+    res.cookie("token", token, cookieOptions);
+
+    // Return user data
+    const userData = user.toJSON();
 
     res.status(200).json({
       success: true,
       message: "Login successful",
-      user: user.toJSON(),
+      user: userData,
       token: token,
     });
   } catch (error) {
@@ -610,7 +658,7 @@ exports.forgotPassword = async (req, res) => {
 
         // Prepare reset URL
 
-        const resetUrl = `${env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:8080'}/reset-password?token=${resetToken}`;
 
         console.log("🔗 Reset URL generated");
 

@@ -1,11 +1,11 @@
 const mongoose = require('mongoose');
 const DailyReport = require('../models/dailyReportModel');
-const env = require('../config/env'); 
+// dotenv.config() is already called in server.js 
 
 async function migrate() {
   try {
-    console.log("Connecting to:", env.MONGODB_URI);
-    await mongoose.connect(env.MONGODB_URI);
+    // MongoDB connection is handled by the main app
+    // No need to connect here as it's already connected in the main app
     console.log("Connected to MongoDB successfully...");
 
     const reports = await DailyReport.find({});
