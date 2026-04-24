@@ -370,14 +370,10 @@ const createNewReport = async (req, res) => {
 
 const createBlankReport = async (req, res) => {
   try {
-    const { projectName } = req.body;
+    const { projectName, projectId } = req.body;
     const userId = req.user.userId;
-    
-    console.log("DEBUG BACKEND CONTROLLER: Creating blank report for:", { userId, projectName });
 
-    const report = await dailyReportService.createBlankReport(userId, projectName);
-    
-    console.log("DEBUG BACKEND CONTROLLER: Blank report created with ID:", report._id);
+    const report = await dailyReportService.createBlankReport(userId, projectName, projectId || null);
     
     res.status(201).json({
       success: true,
