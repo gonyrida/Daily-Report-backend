@@ -340,6 +340,7 @@ exports.getPurchaseRequests = async (req, res) => {
       { $unwind: '$purchaseRequests' },
       {
         $match: {
+          'purchaseRequests.status': { $ne: 'draft' },
           ...(effectiveStatus && { 'purchaseRequests.status': effectiveStatus }),
           ...(effectivePurpose && { 'purchaseRequests.purpose': { $regex: effectivePurpose, $options: 'i' } }),
           ...(effectiveRequester && { 'purchaseRequests.requesterName': { $regex: effectiveRequester, $options: 'i' } }),
