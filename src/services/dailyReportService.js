@@ -886,32 +886,40 @@ const submitDailyReport = async (userId, projectName, reportDate) => {
  * Create a new report with default/empty data
  * Always creates a new report, allows multiple reports per date/project
  */
-const createNewReport = async (userId, projectName, reportDate, companyId) => {
+const createNewReport = async (userId, projectName, reportDate, companyId, projectId = null) => {
   try {
-
-    // Get user's full name for createdBy field
     const user = await User.findById(userId);
     const userFullName = user ? `${user.firstName} ${user.lastName}` : "";
 
-  
+    // Resolve projectId by name if not provided
+    let resolvedProjectId = projectId;
+    if (!resolvedProjectId && projectName && user?.companyId) {
+      try {
+        const Project = require('../models/projectModel');
+        const project = await Project.findOne({
+          name: { $regex: new RegExp(`^${projectName}$`, 'i') },
+          companyId: user.companyId,
+          isActive: true
+        });
+        if (project) resolvedProjectId = project._id;
+      } catch (_) { /* non-fatal */ }
+    }
 
-
-    // No longer checking for existing reports - allow multiple reports per date/project
-    // Create new report with default values
+    const baseReportData = { userId, projectName, reportDate };
     let processedReportData;
     try {
-      processedReportData = await processReportImages(reportData, userId);
+      processedReportData = await processReportImages(baseReportData, userId);
     } catch (error) {
-      processedReportData = reportData; // Use original if processing fails
+      processedReportData = baseReportData;
     }
-    
+
     const report = new DailyReport({
       userId,
       companyId,
-      createdBy: userFullName, // Auto-populate from authenticated user
-      projectName: projectName ,
-      projectId: reportData.projectId || null, // Add projectId support
-      ...processedReportData, // Use processed data with Supabase URLs
+      createdBy: userFullName,
+      projectName,
+      projectId: resolvedProjectId || null,
+      ...processedReportData,
       reportDate,
       status: "draft",
       // Weather fields
@@ -1094,30 +1102,40 @@ const getRecentReports = async (userId, limit = 20, statusFilter = null, project
 /**
  * Create blank draft report immediately (Google Docs style)
  */
-const createBlankReport = async (userId, projectName = null) => {
+const createBlankReport = async (userId, projectName = null, projectId = null) => {
   try {
-
-    // Get user's full name for createdBy field
     const user = await User.findById(userId);
     const userFullName = user ? `${user.firstName} ${user.lastName}` : "";
 
-    // Process images if any (though blank report shouldn't have images)
+    // Resolve projectId: use provided value, otherwise look it up by name
+    let resolvedProjectId = projectId;
+    if (!resolvedProjectId && projectName && user?.companyId) {
+      try {
+        const Project = require('../models/projectModel');
+        const project = await Project.findOne({
+          name: { $regex: new RegExp(`^${projectName}$`, 'i') },
+          companyId: user.companyId,
+          isActive: true
+        });
+        if (project) resolvedProjectId = project._id;
+      } catch (_) { /* non-fatal */ }
+    }
+
     let processedReportData = {};
     try {
       processedReportData = await processReportImages({ userId, projectName, reportDate: new Date() }, userId);
     } catch (error) {
-      // For blank report, use minimal data if processing fails
       processedReportData = { userId, projectName, reportDate: new Date() };
     }
 
     const report = new DailyReport({
       userId,
-      createdBy: userFullName, // ← ADD THIS: Auto-populate from authenticated user
+      createdBy: userFullName,
       projectName: projectName || "Untitled Report",
-      ...processedReportData, // Use processed data with Supabase URLs
+      projectId: resolvedProjectId || null,
+      ...processedReportData,
       reportDate: new Date(),
       status: "draft",
-      // Minimal default data
       weatherAM: "",
       weatherPM: "",
       tempAM: "",
@@ -1128,17 +1146,15 @@ const createBlankReport = async (userId, projectName = null) => {
       managementTeam: [],
       workingTeamInterior: [],
       workingTeamMEP: [],
-      workingTeam: [], // Keep backward compatibility
+      workingTeam: [],
       materials: [],
       machinery: [],
     });
 
     await report.save();
-    
-    console.log("DEBUG BACKEND SERVICE: Blank report created:", report._id);
     return report;
   } catch (error) {
-    console.error("DEBUG BACKEND SERVICE: Error creating blank report:", error);
+    console.error("Error creating blank report:", error);
     throw error;
   }
 };
