@@ -30,9 +30,25 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    position: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    department: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    orgLevel: {
+      type: Number,
+      min: 0,
+      max: 3,
+      default: 0,
+    },
     role: {
       type: String,
-      enum: ["admin", "user"],
+      enum: ["admin", "approver", "user"],
       default: "user",
     },
     companyId: {

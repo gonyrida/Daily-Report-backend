@@ -13,6 +13,9 @@ const folderRoutes = require('./routes/folderRoutes');
 const supportRoutes = require("./routes/supportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const materialRoutes = require("./features/material_master/routes/materialRoutes");
+const adminRoutes = require("./features/admin_dashboard/routes/adminRoutes");
+const purchaseRequestRoutes = require("./features/purchase_request/routes/purchaseRequestRoutes");
 const { authenticateToken } = require("./middleware/authMiddleware");
 const { generalLimiter, authLimiter } = require("./middleware/rateLimitMiddleware");
 // dotenv.config() is already called in server.js
@@ -103,6 +106,9 @@ app.use("/api/images", authenticateToken, imageRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/notifications", authenticateToken, notificationRoutes);
+app.use("/api/admin", authenticateToken, adminRoutes);
+app.use("/api/purchase-requests", authenticateToken, purchaseRequestRoutes); //Add Purchase Request Routes
+app.use("/api/materials", authenticateToken, materialRoutes); // Add Material Routes
 
 // og:image
 app.get("/api/og-image", (_req, res) => {
