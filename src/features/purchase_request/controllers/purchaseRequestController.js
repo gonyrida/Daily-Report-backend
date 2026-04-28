@@ -7,6 +7,7 @@ const {
 const { createAuditLog } = require("../helpers/createAuditLog");
 const PR_Project = require("../models/projectPRModel");
 const mongoose = require('mongoose');
+const purchaseRequestServices = require("../services/purchaseRequestServices");
 
 // Normalize attachment fileSize from formatted strings to bytes numbers
 function parseAttachmentFileSize(fileSize) {
@@ -578,9 +579,6 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
       purchaseRequest.status = 'pending';
     }
 
-    console.log('Updated workflow step:', workflowStep);
-    console.log('Full workflow after update:', purchaseRequest.approvalWorkflow);
-
     await purchaseRequest.save();
 
     res.status(200).json({
@@ -598,9 +596,9 @@ exports.updatePurchaseRequestStatus = async (req, res) => {
   }
 };
 
-// @desc    Delete purchase request (soft delete)
+// @desc    Delete purchase request (hard delete)
 // @route   DELETE /api/purchase-requests/:id
-// @access  Private (creator only)
+// @access  Private (creator or admin)
 exports.deletePurchaseRequest = async (req, res) => {
   try {
     const user = await User.findById(req.user.userId);
@@ -614,38 +612,32 @@ exports.deletePurchaseRequest = async (req, res) => {
     const purchaseRequest = await PurchaseRequest.findOne({
       _id: req.params.id,
       companyId: user.companyId,
-      createdBy: user._id,
       isDeleted: false
     });
 
-    if (!purchaseRequest) {
+    if (!purchaseRequest || (user._id.toString() !== purchaseRequest.createdBy.toString() && user.role !== 'admin')) {
       return res.status(404).json({
         success: false,
         message: "Purchase request not found or you don't have permission to delete it"
       });
     }
 
-    // Soft delete
-    purchaseRequest.isDeleted = true;
-    purchaseRequest.deletedAt = new Date();
+    if (user.role === 'user' || user.role === 'approver') {
+      // Check if all steps are completed or approved
+      const allStepsCompleted = purchaseRequest.approvalWorkflow.some(step => step.status === 'approved');
+      if (allStepsCompleted || purchaseRequest.status === 'revised' || purchaseRequest.status === 'rejected' || purchaseRequest.status === 'approved') {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot delete purchase request. Some steps has been acted on already"
+        });
+      }
+    }
 
-    // Log cancellation action
-    await createAuditLog(
-      purchaseRequest._id,
-      purchaseRequest.label,
-      user._id,
-      'prepared',
-      user.department || 'unknown',
-      'completed',
-      'cancelled',
-      'Request deleted by creator'
-    );
-
-    await purchaseRequest.save();
+    const result = await purchaseRequestServices.deletePurchaseRequest([req.params.id]);
 
     res.status(200).json({
       success: true,
-      message: "Purchase request deleted successfully"
+      message: result.message
     });
 
   } catch (error) {
@@ -653,6 +645,59 @@ exports.deletePurchaseRequest = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error deleting purchase request"
+    });
+  }
+};
+
+// @desc    Delete purchase requests (hard delete)
+// @route   DELETE /api/purchase-requests/bulk
+// @access  Private (creator or admin)
+exports.bulkDeletePurchaseRequests = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    const purchaseRequests = await PurchaseRequest.find({
+      _id: { $in: req.body.ids },
+      companyId: user.companyId,
+      isDeleted: false
+    });
+
+    if (purchaseRequests.length === 0 || (user._id.toString() !== purchaseRequests[0].createdBy.toString() && user.role !== 'admin')) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase request not found or you don't have permission to delete it"
+      });
+    }
+
+    if (user.role === 'user' || user.role === 'approver') {
+      // Check if all steps are completed or approved
+      const allStepsCompleted = purchaseRequest.approvalWorkflow.some(step => step.status === 'approved');
+      if (allStepsCompleted || purchaseRequest.status === 'revised' || purchaseRequest.status === 'rejected' || purchaseRequest.status === 'approved') {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot delete purchase request. Some steps has been acted on already"
+        });
+      }
+    }
+
+    const result = await purchaseRequestServices.deletePurchaseRequest(req.body.ids);
+
+    res.status(200).json({
+      success: true,
+      message: result.message
+    });
+
+  } catch (error) {
+    console.error("Bulk delete purchase requests error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error deleting purchase requests"
     });
   }
 };
