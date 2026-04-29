@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const weeklyReportService = require('../services/weeklyReportService');
+const { convertPdfToImages, convertPdfToImagesStandalone } = require('../services/pdfConversionService');
 const {
   getWeeklyReports,
   getWeeklyReportsMeta,
@@ -299,5 +300,93 @@ router.post('/aggregate-manpower', aggregateManpower);
 
 // POST /api/weekly-reports/:id/update-manpower - Update report with aggregated manpower
 router.post('/:id/update-manpower', updateReportManpower);
+
+// POST /api/weekly-reports/:id/master-schedule/:entryId/convert-pdf - Convert PDF to images
+router.post('/:id/master-schedule/:entryId/convert-pdf', async (req, res) => {
+  try {
+    const { id: reportId, entryId } = req.params;
+    const userId = req.user.userId;
+    const { pdfUrl } = req.body;
+
+    if (!pdfUrl) {
+      return res.status(400).json({
+        success: false,
+        error: 'PDF URL is required'
+      });
+    }
+
+    console.log(`[API] PDF conversion request - Report: ${reportId}, Entry: ${entryId}`);
+
+    // Start conversion
+    const result = await convertPdfToImages(pdfUrl, reportId, entryId, userId);
+
+    if (result.success) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          entryId,
+          images: result.images,
+          pageCount: result.pageCount
+        },
+        message: `Successfully converted PDF to ${result.pageCount} images`
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        error: result.error || 'PDF conversion failed'
+      });
+    }
+
+  } catch (error) {
+    console.error('[API] PDF conversion error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error during PDF conversion'
+    });
+  }
+});
+
+// POST /api/weekly-reports/convert-pdf-standalone - Convert PDF without saving report
+router.post('/convert-pdf-standalone', async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { pdfUrl, tempId } = req.body;
+
+    if (!pdfUrl) {
+      return res.status(400).json({
+        success: false,
+        error: 'PDF URL is required'
+      });
+    }
+
+    console.log(`[API] Standalone PDF conversion request - tempId: ${tempId}`);
+
+    // Start conversion without updating database
+    const result = await convertPdfToImagesStandalone(pdfUrl, tempId || 'unsaved', userId);
+
+    if (result.success) {
+      return res.status(200).json({
+        success: true,
+        data: {
+          images: result.images,
+          pageCount: result.pageCount
+        },
+        message: `Successfully converted PDF to ${result.pageCount} images`
+      });
+    } else {
+      return res.status(500).json({
+        success: false,
+        error: result.error || 'PDF conversion failed'
+      });
+    }
+
+  } catch (error) {
+    console.error('[API] Standalone PDF conversion error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || 'Internal server error during PDF conversion'
+    });
+  }
+});
 
 module.exports = router;
