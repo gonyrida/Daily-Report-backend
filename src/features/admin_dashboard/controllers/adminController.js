@@ -50,10 +50,32 @@ exports.getAllUsers = async (req, res) => {
     }
  
     const { page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    //Extract filters from query parameters
+    const { role, search } = req.query;
  
     // Use the requesting admin's companyId automatically
     const filter = { companyId: requestingUser.companyId };
+
+    if (role && role !== "all") {
+      filter.role = role;
+    }
+
+    // Future Optimization Tips: Either use MongoDB Atlas Search (Lucene) or Create text indexes 
+    if (search) {
+      // Use $or to check multiple fields
+      // Split search into keywords for more flexible matching
+      const keywords = search.split(" ").filter(Boolean);
+      
+      filter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        // Advanced: Check if keywords match either field
+        { firstName: { $in: keywords.map(k => new RegExp(k, 'i')) } },
+        { lastName: { $in: keywords.map(k => new RegExp(k, 'i')) } }
+      ];
+    }
  
     const users = await User.find(filter)
       .select('-password')

@@ -230,14 +230,13 @@ exports.register = async (req, res) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email /*, password */ } = req.body;
+    const { email, password } = req.body;
 
-    // Validation - only email required for now
-    // Original validation: if (!email || !password) {
-    if (!email) {
+    // Validation both email and password are required
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email is required", // Original: "Email and password are required",
+        message: "Email and password are required",
       });
     }
 
@@ -301,21 +300,21 @@ exports.login = async (req, res) => {
     //   });
     // }
 
-    // Original password comparison - commented out for email-only authentication
-    // const userWithPassword = await User.findOne({ email: email.toLowerCase() }).select("+password");
-    // if (!userWithPassword) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: "Invalid credentials",
-    //   });
-    // }
-    // const isPasswordValid = await userWithPassword.comparePassword(password);
-    // if (!isPasswordValid) {
-    //   return res.status(401).json({
-    //     success: false,
-    //     message: "Invalid credentials",
-    //   });
-    // }
+    // Password comparison
+    const userWithPassword = await User.findOne({ email: email.toLowerCase() }).select("+password");
+    if (!userWithPassword) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
+    const isPasswordValid = await userWithPassword.comparePassword(password);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
+    }
 
     // Update last login
     user.lastLogin = new Date();
