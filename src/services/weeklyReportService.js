@@ -1,6 +1,7 @@
 const WeeklyReport = require('../models/WeeklyReport');
 const DailyReport = require('../models/dailyReportModel'); // NEW: Import Daily Report model
 const { aggregateManpowerData, updateWeeklyReportManpower } = require('../utils/manpowerAggregation');
+const { aggregateImages, updateWeeklyReportImages } = require('../utils/imageAggregation');
 const mongoose = require('mongoose'); // ← ADD THIS
 
 /**
@@ -1393,6 +1394,76 @@ const createReportWithManpower = async (userId, companyId, reportData, aggregati
 };
 
 /**
+ * Aggregate images from daily reports for a weekly report
+ * @param {string} projectIdentifier - Project name or projectId
+ * @param {Date} startDate - Week start date (Friday)
+ * @param {Date} endDate - Week end date (Thursday)
+ * @param {Object} options - Options for aggregation (useProjectId, maxImagesPerReport)
+ * @returns {Promise<Object>} - Aggregated image data
+ */
+const aggregateWeeklyImages = async (projectIdentifier, startDate, endDate, options = {}) => {
+  return await aggregateImages(projectIdentifier, startDate, endDate, options);
+};
+
+/**
+ * Update weekly report with aggregated images from daily reports
+ * @param {string} reportId - Weekly report ID
+ * @param {Object} options - Options for aggregation (maxImagesPerReport)
+ * @returns {Promise<Object>} - Update result
+ */
+const updateReportImages = async (reportId, options = {}) => {
+  return await updateWeeklyReportImages(reportId, options);
+};
+
+/**
+ * Create weekly report with automatic image aggregation
+ * @param {string} userId - User ID
+ * @param {string} companyId - Company ID
+ * @param {Object} reportData - Report data
+ * @param {Object} aggregationOptions - Options for image aggregation
+ * @returns {Promise<Object>} - Created report with aggregated images
+ */
+const createReportWithImages = async (userId, companyId, reportData, aggregationOptions = {}) => {
+  try {
+    // Create the weekly report first
+    const createResult = await createReport(userId, companyId, reportData);
+    
+    if (!createResult.success) {
+      return createResult;
+    }
+    
+    // Aggregate images from daily reports
+    const imageResult = await updateWeeklyReportImages(
+      createResult.data._id,
+      aggregationOptions
+    );
+    
+    if (!imageResult.success) {
+      console.warn('Image aggregation failed:', imageResult.error);
+      // Still return the created report, but with a warning
+      return {
+        ...createResult,
+        warning: 'Report created but image aggregation failed'
+      };
+    }
+    
+    return {
+      success: true,
+      data: imageResult.data,
+      message: 'Weekly report created with image aggregation successfully'
+    };
+    
+  } catch (error) {
+    console.error('Error creating report with images:', error);
+    return {
+      success: false,
+      error: 'Failed to create report with image aggregation',
+      details: error.message
+    };
+  }
+};
+
+/**
  * Get company-wide weekly reports (submitted only) with pagination and filtering
  * Similar to getCompanyReports in dailyReportService
  */
@@ -1501,6 +1572,10 @@ module.exports = {
   aggregateWeeklyManpower,
   updateReportManpower,
   createReportWithManpower,
+  // Image aggregation functions
+  aggregateWeeklyImages,
+  updateReportImages,
+  createReportWithImages,
   // Transformation utilities (exported for testing)
   transformActivitiesToBackend,
   transformActivitiesToFrontend,
