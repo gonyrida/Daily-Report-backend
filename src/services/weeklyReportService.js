@@ -247,7 +247,24 @@ const createReport = async (userId, companyId, reportData) => {
     };
 
     // Resolve projectId: use provided value, otherwise look it up by project name
-    let resolvedProjectId = reportData.projectId || null;
+    let resolvedProjectId = null;
+    
+    // First, try to use provided projectId (convert string to ObjectId if needed)
+    if (reportData.projectId) {
+      try {
+        // Check if it's already a valid ObjectId
+        if (mongoose.Types.ObjectId.isValid(reportData.projectId)) {
+          resolvedProjectId = new mongoose.Types.ObjectId(reportData.projectId);
+        } else if (typeof reportData.projectId === 'object' && reportData.projectId._id) {
+          // Handle case where projectId is an object
+          resolvedProjectId = reportData.projectId;
+        }
+      } catch (err) {
+        console.warn('[createReport] Invalid projectId provided:', reportData.projectId);
+      }
+    }
+    
+    // If no valid projectId yet, look it up by project name
     if (!resolvedProjectId && reportData.projectName && companyId) {
       try {
         const Project = require('../models/projectModel');
@@ -256,8 +273,22 @@ const createReport = async (userId, companyId, reportData) => {
           companyId,
           isActive: true
         });
-        if (project) resolvedProjectId = project._id;
-      } catch (_) { /* non-fatal */ }
+        if (project) {
+          resolvedProjectId = project._id;
+          console.log(`[createReport] Resolved projectId from project name: ${resolvedProjectId}`);
+        }
+      } catch (err) { 
+        console.warn('[createReport] Error looking up project by name:', err);
+      }
+    }
+    
+    // Validate that we have a projectId - it's required
+    if (!resolvedProjectId) {
+      return {
+        success: false,
+        error: 'projectId is required. Please provide a valid projectId or projectName',
+        details: 'Could not resolve projectId from provided data'
+      };
     }
 
     const report = new WeeklyReport({
@@ -278,13 +309,14 @@ const createReport = async (userId, companyId, reportData) => {
     report.markModified('sections');
     report.markModified('sections.masterSchedule');
 
-    // Save with validation bypassed for masterSchedule
-    const savedReport = await report.save({ validateBeforeSave: false });
+    // Save with validation enabled (projectId is now required and properly set)
+    const savedReport = await report.save();
 
-    // Force masterSchedule to be saved correctly
+    // Force masterSchedule to be saved correctly if it exists
     if (sections.masterSchedule && sections.masterSchedule.length > 0) {
       savedReport.sections.masterSchedule = sections.masterSchedule;
-      await savedReport.save({ validateBeforeSave: false });
+      savedReport.markModified('sections.masterSchedule');
+      await savedReport.save();
     }
 
     return {
@@ -366,6 +398,20 @@ const updateReport = async (reportId, userId, updateData) => {
         updatedData[key] = updateData[key];
       }
     });
+    
+    // Handle projectId conversion if provided
+    if (updateData.projectId) {
+      try {
+        if (mongoose.Types.ObjectId.isValid(updateData.projectId)) {
+          updatedData.projectId = new mongoose.Types.ObjectId(updateData.projectId);
+        } else if (typeof updateData.projectId === 'object' && updateData.projectId._id) {
+          updatedData.projectId = updateData.projectId;
+        }
+      } catch (err) {
+        console.warn('[updateReport] Invalid projectId provided:', updateData.projectId);
+        delete updatedData.projectId; // Remove invalid projectId to prevent validation errors
+      }
+    }
 
     // Ensure introduction section exists with proper defaults
     if (updatedData.sections) {

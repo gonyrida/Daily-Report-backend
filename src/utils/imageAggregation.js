@@ -73,7 +73,8 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
   const activityPhotos = [];
   
   for (const report of dailyReports) {
-    let reportCollected = 0; // Total images collected from this daily report
+    let toolboxCollected = 0; // Images collected for toolbox from this report
+    let activityCollected = 0; // Images collected for activity from this report
     
     // First try to get images from hse field
     const hseSections = report.hse || [];
@@ -88,7 +89,10 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
       
       const targetArray = isToolbox ? toolboxPhotos : activityPhotos;
       
-      for (let i = 0; i < images.length && reportCollected < maxPerReport; i++) {
+      // Get current count for this section type
+      const getCurrentCount = () => isToolbox ? toolboxCollected : activityCollected;
+      
+      for (let i = 0; i < images.length && getCurrentCount() < maxPerReport; i++) {
         const imageUrl = extractImageUrl(images[i]);
         if (!imageUrl) continue;
         
@@ -101,14 +105,19 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
           sectionTitle: section.section_title || ''
         });
         
-        reportCollected++;
+        if (isToolbox) {
+          toolboxCollected++;
+        } else {
+          activityCollected++;
+        }
       }
       
-      if (reportCollected >= maxPerReport) break;
+      // Stop processing hse sections if both limits reached
+      if (toolboxCollected >= maxPerReport && activityCollected >= maxPerReport) break;
     }
     
-    // If still under limit, try referenceSections
-    if (reportCollected < maxPerReport && report.referenceSections) {
+    // Try referenceSections - each section type has its own limit
+    if (report.referenceSections) {
       const refSections = Array.isArray(report.referenceSections) ? report.referenceSections : [];
       
       for (const section of refSections) {
@@ -119,13 +128,19 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
         const isToolbox = sectionTitle.includes('toolbox') || sectionTitle.includes('meeting');
         const isActivity = sectionTitle.includes('activity') || !isToolbox;
         
+        // Skip if this section type is already at limit
+        if (isToolbox && toolboxCollected >= maxPerReport) continue;
+        if (isActivity && activityCollected >= maxPerReport) continue;
+        
         const targetArray = isToolbox ? toolboxPhotos : activityPhotos;
         
         for (const entry of section.entries) {
           if (!entry.slots) continue;
           
           for (const slot of entry.slots) {
-            if (reportCollected >= maxPerReport) break;
+            // Check individual section limit
+            if (isToolbox && toolboxCollected >= maxPerReport) break;
+            if (isActivity && activityCollected >= maxPerReport) break;
             
             const imageUrl = extractImageUrl(slot.image);
             if (!imageUrl) continue;
@@ -139,13 +154,17 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
               sectionTitle: section.title || ''
             });
             
-            reportCollected++;
+            if (isToolbox) {
+              toolboxCollected++;
+            } else {
+              activityCollected++;
+            }
           }
           
-          if (reportCollected >= maxPerReport) break;
+          // Check individual section limit
+          if (isToolbox && toolboxCollected >= maxPerReport) break;
+          if (isActivity && activityCollected >= maxPerReport) break;
         }
-        
-        if (reportCollected >= maxPerReport) break;
       }
     }
   }
@@ -384,8 +403,35 @@ const updateWeeklyReportImages = async (reportId, options = {}) => {
       };
     }
     
-    const { projectId, projectName, startDate } = weeklyReport;
+    let { projectId, projectName, startDate } = weeklyReport;
     let { endDate } = weeklyReport;
+    
+    // If projectId is missing but projectName exists, try to resolve projectId
+    if (!projectId && projectName) {
+      try {
+        const Project = require('../models/projectModel');
+        const project = await Project.findOne({
+          name: { $regex: new RegExp(`^${projectName}$`, 'i') },
+          isActive: true
+        });
+        if (project) {
+          projectId = project._id;
+          weeklyReport.projectId = projectId;
+          console.log(`[updateWeeklyReportImages] Resolved projectId ${projectId} from projectName: ${projectName}`);
+        }
+      } catch (err) {
+        console.warn('[updateWeeklyReportImages] Could not resolve projectId from projectName:', err);
+      }
+    }
+    
+    // If still no projectId, return error
+    if (!projectId) {
+      return {
+        success: false,
+        error: 'Cannot aggregate images: Weekly report is missing projectId. Please update the report with a valid project.',
+        details: 'The weekly report must have a valid projectId to aggregate images from daily reports'
+      };
+    }
 
     // If endDate is missing or not after startDate, derive it as startDate + 6 days
     if (!endDate || new Date(startDate) >= new Date(endDate)) {
@@ -426,6 +472,7 @@ const updateWeeklyReportImages = async (reportId, options = {}) => {
     
     weeklyReport.markModified('sections.hses');
     weeklyReport.markModified('sections.photos');
+    weeklyReport.markModified('projectId'); // Mark projectId as modified if it was resolved
     
     await weeklyReport.save();
     
