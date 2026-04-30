@@ -406,8 +406,10 @@ const weeklyReportSchema = new mongoose.Schema({
     photos: {
       title: { type: String, default: "Site Activities Photos" },
       locations: [{
-        location: String,
+        id: String,
+        title: String,
         entries: [{
+          id: String,
           slots: [{
             image: String,
             caption: String

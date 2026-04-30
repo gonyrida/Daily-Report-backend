@@ -243,26 +243,43 @@ const transformSiteToWeeklyFormat = (sitePhotos) => {
       locations: []
     };
   }
-  
-  // Group photos by date (2 per location/entry)
-  const locations = [];
-  const photosPerLocation = 2;
-  
-  for (let i = 0; i < sitePhotos.length; i += photosPerLocation) {
-    const locationPhotos = sitePhotos.slice(i, i + photosPerLocation);
-    const date = locationPhotos[0]?.date || '';
-    
-    locations.push({
-      location: date ? `Site Activity - ${date}` : `Location ${Math.floor(i / photosPerLocation) + 1}`,
-      entries: [{
-        slots: locationPhotos.map(photo => ({
+
+  // Group photos by date
+  const photosByDate = {};
+  for (const photo of sitePhotos) {
+    const date = photo.date || 'Unknown';
+    if (!photosByDate[date]) {
+      photosByDate[date] = [];
+    }
+    photosByDate[date].push(photo);
+  }
+
+  // Create ONE section with multiple entries (one entry per date)
+  const entries = [];
+  let entryIndex = 0;
+
+  for (const [date, photos] of Object.entries(photosByDate)) {
+    // Each entry holds up to 2 photos from the same date
+    for (let i = 0; i < photos.length; i += 2) {
+      const entryPhotos = photos.slice(i, i + 2);
+      entries.push({
+        id: `entry-${Date.now()}-${entryIndex}`,
+        slots: entryPhotos.map((photo, idx) => ({
+          id: `slot-${entryIndex}-${idx}`,
           image: photo.image,
           caption: photo.caption
         }))
-      }]
-    });
+      });
+      entryIndex++;
+    }
   }
-  
+
+  const locations = [{
+    id: `location-${Date.now()}`,
+    title: 'Site Activity Photos',
+    entries
+  }];
+
   return {
     title: 'Site Activities Photos',
     locations
