@@ -380,11 +380,27 @@ const updateReport = async (reportId, userId, updateData) => {
       }
     }
 
-    const updatedReport = await WeeklyReport.findByIdAndUpdate(
-      reportId,
-      updatedData,
-      { new: true, runValidators: true }
-    ).lean();
+    // Update the document directly to handle nested array modifications
+    const reportToUpdate = await WeeklyReport.findById(reportId);
+    if (!reportToUpdate) {
+      return {
+        success: false,
+        error: 'Weekly report not found'
+      };
+    }
+
+    // Apply updates
+    Object.assign(reportToUpdate, updatedData);
+
+    // Mark nested sections as modified to ensure proper saving
+    if (updatedData.sections?.photos) {
+      reportToUpdate.markModified('sections.photos');
+    }
+    if (updatedData.sections?.hses) {
+      reportToUpdate.markModified('sections.hses');
+    }
+
+    const updatedReport = await reportToUpdate.save({ runValidators: true });
 
     // DEBUG: Log saved HSES data
     if (updatedReport?.sections?.hses) {
@@ -1551,6 +1567,266 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
   }
 };
 
+// ============================================================================
+// MASTER REPORT: Folder-level aggregation helpers (module-private)
+// ============================================================================
+
+/**
+ * Sum thisWeek manpower values across all team arrays in a single report's resources.
+ */
+const _sumReportManpower = (report) => {
+  const mp = report.sections?.resources?.manPower;
+  if (!mp) return 0;
+  const sumTeam = (arr) => (arr || []).reduce((s, row) => s + (Number(row.thisWeek) || 0), 0);
+  return sumTeam(mp.managementTeam) + sumTeam(mp.workingTeamInterior) + sumTeam(mp.workingTeamMEP);
+};
+
+/**
+ * Extract a single overall progress percentage from a report.
+ * Priority: constructionProgress.items averages → overallProgress.rows → 0
+ */
+const _extractProjectProgress = (report) => {
+  // Try constructionProgress items (most granular)
+  const cpItems = report.sections?.constructionProgress?.items || [];
+  if (cpItems.length > 0) {
+    const values = cpItems
+      .map(item => parseFloat(item.currentPercent ?? item.actualPercent ?? item.current ?? 0))
+      .filter(v => !isNaN(v) && v > 0);
+    if (values.length > 0) {
+      return parseFloat((values.reduce((s, v) => s + v, 0) / values.length).toFixed(2));
+    }
+  }
+
+  // Try overallProgress rows
+  const opRows = report.sections?.overallProgress?.rows || [];
+  if (opRows.length > 0) {
+    const values = opRows
+      .map(row => parseFloat(row.progress ?? row.percent ?? row.actual ?? 0))
+      .filter(v => !isNaN(v) && v > 0);
+    if (values.length > 0) {
+      return parseFloat((values.reduce((s, v) => s + v, 0) / values.length).toFixed(2));
+    }
+  }
+
+  return 0;
+};
+
+/**
+ * Aggregate manpower totals across all reports.
+ * Returns { managementTotal, workingInteriorTotal, workingMEPTotal, grandTotal }
+ */
+const _aggregateManpower = (reports) => {
+  const sumTeam = (teamArr) => (teamArr || []).reduce((s, row) => s + (Number(row.thisWeek) || 0), 0);
+
+  let managementTotal = 0;
+  let workingInteriorTotal = 0;
+  let workingMEPTotal = 0;
+
+  reports.forEach(r => {
+    const mp = r.sections?.resources?.manPower;
+    if (!mp) return;
+    managementTotal    += sumTeam(mp.managementTeam);
+    workingInteriorTotal += sumTeam(mp.workingTeamInterior);
+    workingMEPTotal    += sumTeam(mp.workingTeamMEP);
+  });
+
+  return {
+    managementTotal,
+    workingInteriorTotal,
+    workingMEPTotal,
+    grandTotal: managementTotal + workingInteriorTotal + workingMEPTotal
+  };
+};
+
+/**
+ * Weighted progress calculation across all reports.
+ *
+ * Formula:
+ *   weightedProgress = Σ(progress_i × manpower_i) / Σ(manpower_i)
+ *
+ * If total manpower across all reports is 0 (no manpower data),
+ * falls back to a simple arithmetic mean of non-zero progress values.
+ *
+ * Returns { weighted: number, perProject: { [projectId]: number } }
+ */
+const _aggregateProgress = (reports, projectMap) => {
+  const perProject = {};
+  let weightedSum  = 0;
+  let totalWeight  = 0;
+  let simpleSum    = 0;
+  let validCount   = 0;
+
+  reports.forEach(r => {
+    const projectId = r.projectId?.toString();
+    const progress  = _extractProjectProgress(r);
+    perProject[projectId] = progress;
+
+    if (progress > 0) {
+      simpleSum += progress;
+      validCount++;
+    }
+
+    const manpower = _sumReportManpower(r);
+    if (progress > 0 && manpower > 0) {
+      weightedSum += progress * manpower;
+      totalWeight += manpower;
+    }
+  });
+
+  const weighted = totalWeight > 0
+    ? parseFloat((weightedSum / totalWeight).toFixed(2))
+    : validCount > 0 ? parseFloat((simpleSum / validCount).toFixed(2)) : 0;
+
+  return { weighted, perProject };
+};
+
+// ============================================================================
+// MASTER REPORT: Main aggregation function
+// ============================================================================
+
+/**
+ * Dynamically generate a folder-level Master Weekly Report.
+ * No data is persisted – this is computed on-the-fly from existing WeeklyReport docs.
+ *
+ * @param {string} folderId  - MongoDB ObjectId of the Folder
+ * @param {number} weekNumber - ISO week number (1-53)
+ * @param {string} [companyId] - optional, for future access-control extension
+ */
+const getMasterReport = async (folderId, weekNumber, companyId) => {
+  try {
+    const Project = require('../models/projectModel');
+    const Folder  = require('../models/folderModel');
+
+    if (!mongoose.Types.ObjectId.isValid(folderId)) {
+      return { success: false, error: 'Invalid folderId' };
+    }
+
+    // Step 1: Fetch folder metadata and all active projects in parallel
+    const [folder, projects] = await Promise.all([
+      Folder.findById(folderId).lean(),
+      Project.find({ folderId: new mongoose.Types.ObjectId(folderId), isActive: true }).lean()
+    ]);
+
+    if (!folder) {
+      return { success: false, error: 'Folder not found' };
+    }
+
+    if (!projects.length) {
+      return {
+        success: true,
+        data: {
+          type: 'master',
+          folder,
+          weekNumber,
+          reports: [],
+          aggregated: {
+            activities: { weeklyActivities: [], nextWeekPlan: [] },
+            manpower:   { managementTotal: 0, workingInteriorTotal: 0, workingMEPTotal: 0, grandTotal: 0 },
+            photos:     {},
+            progress:   { weighted: 0, perProject: {} },
+            issues:     []
+          }
+        }
+      };
+    }
+
+    const projectIds = projects.map(p => p._id);
+
+    // Step 2: Single query – all weekly reports for those projects in the given week (no N+1)
+    const reports = await WeeklyReport.find({
+      projectId:  { $in: projectIds },
+      weekNumber: parseInt(weekNumber)
+    }).lean();
+
+    // Build project lookup map for O(1) access
+    const projectMap = Object.fromEntries(projects.map(p => [p._id.toString(), p]));
+
+    // ── Step 3: Aggregation ──────────────────────────────────────────────────
+
+    // ACTIVITIES: flatMap, preserving source project for display
+    const allWeeklyActivities = reports.flatMap(r => {
+      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      return (r.sections?.activities?.weeklyActivities || []).map(a => ({
+        ...a,
+        projectSource: pName
+      }));
+    });
+
+    const allNextWeekPlan = reports.flatMap(r => {
+      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      return (r.sections?.activities?.nextWeekPlan || []).map(a => ({
+        ...a,
+        projectSource: pName
+      }));
+    });
+
+    // ISSUES: combine all arrays, tagged with source project
+    const allIssues = reports.flatMap(r => {
+      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      return (r.sections?.constructionIssues || []).map(issue => ({
+        ...issue,
+        projectSource: pName
+      }));
+    });
+
+    // PHOTOS: group photo locations by project name
+    const photosByProject = {};
+    reports.forEach(r => {
+      const pName    = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      const locations = r.sections?.photos?.locations || [];
+      if (locations.length > 0) {
+        photosByProject[pName] = locations;
+      }
+    });
+
+    // MANPOWER: summed totals
+    const aggregatedManpower = _aggregateManpower(reports);
+
+    // PROGRESS: weighted by manpower, falls back to simple mean
+    const aggregatedProgress = _aggregateProgress(reports, projectMap);
+
+    // Lightweight per-project summary rows
+    const projectSummaries = reports.map(r => {
+      const project = projectMap[r.projectId?.toString()];
+      return {
+        projectId:     r.projectId,
+        projectName:   project?.name || r.projectName,
+        weekNumber:    r.weekNumber,
+        status:        r.status,
+        startDate:     r.startDate,
+        endDate:       r.endDate,
+        activityCount: (r.sections?.activities?.weeklyActivities || []).length,
+        issueCount:    (r.sections?.constructionIssues || []).length,
+        progress:      aggregatedProgress.perProject[r.projectId?.toString()] || 0
+      };
+    });
+
+    return {
+      success: true,
+      data: {
+        type:      'master',
+        folder,
+        weekNumber: parseInt(weekNumber),
+        reports:   projectSummaries,
+        aggregated: {
+          activities: { weeklyActivities: allWeeklyActivities, nextWeekPlan: allNextWeekPlan },
+          manpower:   aggregatedManpower,
+          photos:     photosByProject,
+          progress:   aggregatedProgress,
+          issues:     allIssues
+        }
+      }
+    };
+  } catch (error) {
+    console.error('Error generating master report:', error);
+    return {
+      success: false,
+      error:   'Failed to generate master report',
+      details: error.message
+    };
+  }
+};
+
 module.exports = {
   getAllReports,
   getReportById,
@@ -1576,6 +1852,8 @@ module.exports = {
   aggregateWeeklyImages,
   updateReportImages,
   createReportWithImages,
+  // Master report (folder-level aggregation)
+  getMasterReport,
   // Transformation utilities (exported for testing)
   transformActivitiesToBackend,
   transformActivitiesToFrontend,

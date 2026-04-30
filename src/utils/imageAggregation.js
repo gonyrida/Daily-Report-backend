@@ -200,7 +200,7 @@ const aggregateSiteImages = (dailyReports, maxPerReport = 2) => {
  * @returns {Object} - Weekly Report HSE photo references structure
  */
 const transformHSEToWeeklyFormat = ({ toolboxPhotos, activityPhotos }) => {
-  // Helper to split photos into entries with 2 slots each
+  // Helper to split photos into entries with 2 slots each (mixed from all dates)
   const createEntries = (photos) => {
     const entries = [];
     for (let i = 0; i < photos.length; i += 2) {
@@ -244,34 +244,18 @@ const transformSiteToWeeklyFormat = (sitePhotos) => {
     };
   }
 
-  // Group photos by date
-  const photosByDate = {};
-  for (const photo of sitePhotos) {
-    const date = photo.date || 'Unknown';
-    if (!photosByDate[date]) {
-      photosByDate[date] = [];
-    }
-    photosByDate[date].push(photo);
-  }
-
-  // Create ONE section with multiple entries (one entry per date)
+  // Create entries with 2 slots each, mixing all photos from all dates
   const entries = [];
-  let entryIndex = 0;
-
-  for (const [date, photos] of Object.entries(photosByDate)) {
-    // Each entry holds up to 2 photos from the same date
-    for (let i = 0; i < photos.length; i += 2) {
-      const entryPhotos = photos.slice(i, i + 2);
-      entries.push({
-        id: `entry-${Date.now()}-${entryIndex}`,
-        slots: entryPhotos.map((photo, idx) => ({
-          id: `slot-${entryIndex}-${idx}`,
-          image: photo.image,
-          caption: photo.caption
-        }))
-      });
-      entryIndex++;
-    }
+  for (let i = 0; i < sitePhotos.length; i += 2) {
+    const entryPhotos = sitePhotos.slice(i, i + 2);
+    entries.push({
+      id: `entry-${Date.now()}-${i}`,
+      slots: entryPhotos.map((photo, idx) => ({
+        id: `slot-${i}-${idx}`,
+        image: photo.image,
+        caption: photo.caption
+      }))
+    });
   }
 
   const locations = [{
@@ -308,26 +292,18 @@ const aggregateImages = async (projectIdentifier, startDate, endDate, options = 
     const end = new Date(endDate);
     
     // Validate date range
-    if (start >= end) {
+    if (start > end) {
       throw new Error('Start date must be before end date');
     }
     
     console.log(`[ImageAggregation] Fetching daily reports for project: ${projectIdentifier}, dates: ${start.toISOString()} to ${end.toISOString()}`);
     
-    // Normalize dates for MongoDB query
+    // Normalize to cover the full calendar day in server local time
     const queryStart = new Date(start);
-    if (start.toTimeString() === '00:00:00 GMT') {
-      queryStart.setHours(7, 0, 0, 0); // Cambodia timezone offset
-    } else {
-      queryStart.setHours(0, 0, 0, 0);
-    }
-    
+    queryStart.setHours(0, 0, 0, 0);
+
     const queryEnd = new Date(end);
-    if (end.toTimeString() === '00:00:00 GMT') {
-      queryEnd.setHours(30, 59, 59, 999); // End of day in Cambodia timezone
-    } else {
-      queryEnd.setHours(23, 59, 59, 999);
-    }
+    queryEnd.setHours(23, 59, 59, 999);
     
     // Build query
     const query = useProjectId && mongoose.Types.ObjectId.isValid(projectIdentifier)
@@ -408,12 +384,20 @@ const updateWeeklyReportImages = async (reportId, options = {}) => {
       };
     }
     
-    const { projectId, projectName, startDate, endDate } = weeklyReport;
-    
+    const { projectId, projectName, startDate } = weeklyReport;
+    let { endDate } = weeklyReport;
+
+    // If endDate is missing or not after startDate, derive it as startDate + 6 days
+    if (!endDate || new Date(startDate) >= new Date(endDate)) {
+      endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      console.warn(`[updateWeeklyReportImages] Invalid date range for report ${reportId}, using startDate + 6 days as endDate`);
+    }
+
     // Determine project identifier
     const useProjectId = !!projectId;
     const projectIdentifier = projectId ? projectId.toString() : projectName;
-    
+
     // Aggregate images
     const aggregationResult = await aggregateImages(
       projectIdentifier,

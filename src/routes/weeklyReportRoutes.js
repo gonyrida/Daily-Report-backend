@@ -20,7 +20,8 @@ const {
   updateReportManpower,
   aggregateImages,
   updateReportImages,
-  getCompanyWeeklyReports
+  getCompanyWeeklyReports,
+  getMasterReport
 } = require('../controllers/weeklyReportController');
 
 // GET /api/weekly-reports - Get all weekly reports for user
@@ -34,6 +35,9 @@ router.get('/meta', getWeeklyReportsMeta);
 
 // GET /api/weekly-reports/template - Get weekly report template
 router.get('/template', getWeeklyReportTemplate);
+
+// GET /api/weekly-reports/master - Folder-level aggregated master report (MUST precede /:id)
+router.get('/master', getMasterReport);
 
 // Construction Progress Routes - MUST come before /:id route
 // GET /api/weekly-reports/:id/construction-progress
