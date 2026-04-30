@@ -427,16 +427,23 @@ const weeklyReportSchema = new mongoose.Schema({
     masterSchedule: [{
       id: { type: String, required: true },
       type: { type: String, required: true },
-      title: { type: String, required: true },
+      title: { type: String, default: "" },
       description: { type: String, default: "" },
-      date: { type: String, required: true },
+      date: { type: String, default: "" },
       fileName: { type: String, default: "" }, // Optional - can be empty for entries without files
       fileData: { type: String, default: "" }, // Base64 encoded file data, optional
       supabaseUrl: { type: String, default: "" }, // Supabase public URL
       supabasePath: { type: String, default: "" }, // Supabase storage path
       fileSize: { type: Number, default: 0 }, // File size in bytes
       fileType: { type: String, default: "" }, // MIME type
-      caption: { type: String, default: "" } // File caption
+      caption: { type: String, default: "" }, // File caption
+      convertedImages: [{ // Converted PDF page images for rendering in PDF
+        pageNumber: { type: Number, required: true },
+        supabaseUrl: { type: String, required: true },
+        supabasePath: { type: String, required: true },
+        width: { type: Number, default: 0 },
+        height: { type: Number, default: 0 }
+      }]
     }], // Array without default to prevent override
     
     constructionProgress: {
