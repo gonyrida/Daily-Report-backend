@@ -190,7 +190,7 @@ exports.createUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, role, position, department, orgLevel } = req.body;
+    const { firstName, lastName, email, role, position, department, password, orgLevel } = req.body;
     
     const requestingUser = await User.findById(req.user.userId);
     
@@ -219,6 +219,7 @@ exports.updateUser = async (req, res) => {
       });
     }
 
+    // TODO: Future update. find ways to update user without doing both update and password update
     // Update user fields
     const updatedUser = await User.findByIdAndUpdate(
       id,
@@ -232,12 +233,17 @@ exports.updateUser = async (req, res) => {
         orgLevel: orgLevel !== undefined ? orgLevel : userToUpdate.orgLevel
       },
       { new: true, runValidators: true }
-    ).select('-password');
+    );
+
+    // Update password if exist
+    if (password) {
+      updatedUser.password = password;
+      await updatedUser.save();
+    }
 
     res.status(200).json({
       success: true,
       message: "User updated successfully",
-      data: updatedUser
     });
 
   } catch (error) {
