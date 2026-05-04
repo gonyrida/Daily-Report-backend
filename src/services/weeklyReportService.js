@@ -100,9 +100,14 @@ const getAllReports = async (userId, options = {}) => {
     const sort = {};
     sort[sortBy] = sortOrder === 'desc' ? -1 : 1;
 
-    // Build query - remove userId filter to show all reports for project
+    // Build query
     const query = {};
-    
+
+    // Add userId filter - only return reports belonging to the current user
+    if (userId) {
+      query.userId = new mongoose.Types.ObjectId(userId);
+    }
+
     // Add status filtering
     if (status) {
       query.status = status;
@@ -1831,6 +1836,22 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
     // PROGRESS: weighted by manpower, falls back to simple mean
     const aggregatedProgress = _aggregateProgress(reports, projectMap);
 
+    // CONSTRUCTION PROGRESS: aggregate items from all reports with project source
+    const constructionProgressByProject = {};
+    reports.forEach(r => {
+      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      const cpItems = r.sections?.constructionProgress?.items || [];
+      if (cpItems.length > 0) {
+        constructionProgressByProject[pName] = {
+          projectInfo: r.sections?.constructionProgress?.projectInfo || { project: pName, subtitle: '' },
+          items: cpItems.map(item => ({
+            ...item,
+            projectSource: pName
+          }))
+        };
+      }
+    });
+
     // Lightweight per-project summary rows
     const projectSummaries = reports.map(r => {
       const project = projectMap[r.projectId?.toString()];
@@ -1859,7 +1880,8 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
           manpower:   aggregatedManpower,
           photos:     photosByProject,
           progress:   aggregatedProgress,
-          issues:     allIssues
+          issues:     allIssues,
+          constructionProgress: constructionProgressByProject
         }
       }
     };

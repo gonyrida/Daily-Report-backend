@@ -112,7 +112,7 @@ const weeklyReportSchema = new mongoose.Schema({
       weeklyActivities: [{
         description: String,
         percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
-        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        source: { type: String, enum: ["manual", "bulk", "construction-progress"], default: "manual" }, // NEW: Track how activity was added
         bulkImportId: String, // NEW: Track which bulk import batch this belongs to
         addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
         // Legacy support for old nested structure
@@ -133,7 +133,7 @@ const weeklyReportSchema = new mongoose.Schema({
       nextWeekPlan: [{
         description: String,
         percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
-        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        source: { type: String, enum: ["manual", "bulk", "construction-progress"], default: "manual" }, // NEW: Track how activity was added
         bulkImportId: String, // NEW: Track which bulk import batch this belongs to
         addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
         // Legacy support for old nested structure
