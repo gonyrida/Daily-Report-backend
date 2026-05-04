@@ -222,11 +222,12 @@ const transformHSEToWeeklyFormat = ({ toolboxPhotos, activityPhotos }) => {
   // Helper to split photos into entries with 2 slots each (mixed from all dates)
   const createEntries = (photos) => {
     const entries = [];
+    const timestamp = Date.now();
     for (let i = 0; i < photos.length; i += 2) {
       entries.push({
-        id: `entry-${Date.now()}-${i}`,
+        id: `entry-${timestamp}-${i}`,
         slots: photos.slice(i, i + 2).map((photo, idx) => ({
-          id: `slot-${i + idx}`,
+          id: `slot-${timestamp}-${i}-${idx}`,
           image: photo.image,
           caption: photo.caption
         }))
@@ -265,12 +266,13 @@ const transformSiteToWeeklyFormat = (sitePhotos) => {
 
   // Create entries with 2 slots each, mixing all photos from all dates
   const entries = [];
+  const timestamp = Date.now();
   for (let i = 0; i < sitePhotos.length; i += 2) {
     const entryPhotos = sitePhotos.slice(i, i + 2);
     entries.push({
-      id: `entry-${Date.now()}-${i}`,
+      id: `entry-${timestamp}-${i}`,
       slots: entryPhotos.map((photo, idx) => ({
-        id: `slot-${i}-${idx}`,
+        id: `slot-${timestamp}-${i}-${idx}`,
         image: photo.image,
         caption: photo.caption
       }))
