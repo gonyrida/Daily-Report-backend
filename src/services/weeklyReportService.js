@@ -1854,6 +1854,69 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       }
     });
 
+    // QAQC: Aggregate items per section across all reports
+    const qaqcSectionKeys = ['ncr', 'car', 'scar', 'pmsi', 'csi', 'ir', 'mfa', 'rfi', 'rfa', 'fcr', 'vo', 'tr', 'mir'];
+    const aggregatedQaqcStatus = {};
+    qaqcSectionKeys.forEach(key => {
+      const allItems = [];
+      const allCommentParts = [];
+
+      reports.forEach(r => {
+        const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+        const section = r.sections?.qaqcStatus?.[key];
+        if (!section) return;
+        if (section.comments?.trim()) {
+          allCommentParts.push(`[${pName}] ${section.comments.trim()}`);
+        }
+        (section.items || []).forEach(item => {
+          if (!item.code?.trim() && !item.description?.trim()) return;
+          allItems.push({ ...item, projectSource: pName });
+        });
+      });
+
+      // Sort chronologically by dateResponded
+      allItems.sort((a, b) => {
+        const dA = a.dateResponded ? new Date(a.dateResponded).getTime() : 0;
+        const dB = b.dateResponded ? new Date(b.dateResponded).getTime() : 0;
+        return dA - dB;
+      });
+
+      aggregatedQaqcStatus[key] = {
+        items: allItems,
+        comments: allCommentParts.join('\n\n---\n\n')
+      };
+    });
+
+    // HSES: Aggregate training, inspection, permit, and text fields across all reports
+    const hsesAcc = { training: [], inspection: [], permit: [], firstAidParts: [], otherParts: [] };
+    reports.forEach(r => {
+      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      const hses = r.sections?.hses;
+      if (!hses) return;
+      (hses.training || []).forEach(t => {
+        if (t.typeOfTraining?.trim() || t.date?.trim()) hsesAcc.training.push({ ...t, projectSource: pName });
+      });
+      (hses.inspection || []).forEach(i => {
+        if (i.typeOfInspection?.trim() || i.date?.trim()) hsesAcc.inspection.push({ ...i, projectSource: pName });
+      });
+      (hses.permit || []).forEach(p => {
+        if (p.typeOfPermit?.trim() || p.startDate?.trim()) hsesAcc.permit.push({ ...p, projectSource: pName });
+      });
+      if (hses.firstAidAccident?.trim()) hsesAcc.firstAidParts.push(`[${pName}] ${hses.firstAidAccident.trim()}`);
+      if (hses.otherActivities?.trim()) hsesAcc.otherParts.push(`[${pName}] ${hses.otherActivities.trim()}`);
+    });
+
+    const _sortByField = (arr, field) =>
+      [...arr].sort((a, b) => new Date(a[field] || 0).getTime() - new Date(b[field] || 0).getTime());
+
+    const aggregatedHses = {
+      training:         _sortByField(hsesAcc.training, 'date'),
+      inspection:       _sortByField(hsesAcc.inspection, 'date'),
+      permit:           _sortByField(hsesAcc.permit, 'startDate'),
+      firstAidAccident: hsesAcc.firstAidParts.join('\n\n'),
+      otherActivities:  hsesAcc.otherParts.join('\n\n'),
+    };
+
     // Lightweight per-project summary rows
     const projectSummaries = reports.map(r => {
       const project = projectMap[r.projectId?.toString()];
@@ -1944,8 +2007,10 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
           manpower:   aggregatedManpower,
           photos:     photosByProject,
           progress:   aggregatedProgress,
-          issues:     allIssues,
-          constructionProgress: constructionProgressByProject
+          issues:              allIssues,
+          constructionProgress: constructionProgressByProject,
+          qaqcStatus:          aggregatedQaqcStatus,
+          hses:                aggregatedHses
         }
       }
     };
