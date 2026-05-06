@@ -1842,11 +1842,13 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
       const cpItems = r.sections?.constructionProgress?.items || [];
       if (cpItems.length > 0) {
-        constructionProgressByProject[pName] = {
-          projectInfo: r.sections?.constructionProgress?.projectInfo || { project: pName, subtitle: '' },
+        const projectInfo = r.sections?.constructionProgress?.projectInfo || { project: pName, subtitle: '' };
+        const displayProjectName = projectInfo.project || pName;
+        constructionProgressByProject[displayProjectName] = {
+          projectInfo: projectInfo,
           items: cpItems.map(item => ({
             ...item,
-            projectSource: pName
+            projectSource: displayProjectName
           }))
         };
       }
@@ -1855,7 +1857,13 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
     // Lightweight per-project summary rows
     const projectSummaries = reports.map(r => {
       const project = projectMap[r.projectId?.toString()];
-      return {
+      
+      // Check both locations for cover image (cover section OR introduction section)
+      const coverImageFromCover = r.sections?.cover?.coverImage;
+      const coverImageFromIntro = r.sections?.introduction?.coverImage;
+      const actualCoverImage = coverImageFromCover || coverImageFromIntro || '';
+      
+      const summary = {
         projectId:     r.projectId,
         projectName:   project?.name || r.projectName,
         weekNumber:    r.weekNumber,
@@ -1864,9 +1872,36 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
         endDate:       r.endDate,
         activityCount: (r.sections?.activities?.weeklyActivities || []).length,
         issueCount:    (r.sections?.constructionIssues || []).length,
-        progress:      aggregatedProgress.perProject[r.projectId?.toString()] || 0
+        progress:      aggregatedProgress.perProject[r.projectId?.toString()] || 0,
+        // Include timestamps for sorting
+        createdAt:     r.createdAt,
+        submittedAt:   r.submittedAt,
+        // Include employer from cover section
+        employer:      r.sections?.cover?.employer || '',
+        // Include cover data for master report cover image selection
+        cover:         {
+          coverImage:  actualCoverImage,
+          projectName: r.sections?.constructionProgress?.projectInfo?.project || project?.name || r.projectName,
+          projectTitle: r.sections?.cover?.projectTitle || '',
+          reportTitle: r.sections?.cover?.reportTitle || '',
+          dateRange:   r.sections?.cover?.dateRange || '',
+          employer:    r.sections?.cover?.employer || ''
+        }
       };
+      
+      return summary;
     });
+    
+    // Collect all available cover images for frontend selection
+    const availableCoverImages = projectSummaries
+      .filter(p => p.cover?.coverImage && p.cover.coverImage !== '')
+      .map(p => ({
+        projectId: p.projectId,
+        projectName: p.projectName,
+        coverImage: p.cover.coverImage,
+        status: p.status,
+        submittedAt: p.submittedAt
+      }));
 
     return {
       success: true,
@@ -1875,6 +1910,7 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
         folder,
         weekNumber: parseInt(weekNumber),
         reports:   projectSummaries,
+        availableCoverImages,
         aggregated: {
           activities: { weeklyActivities: allWeeklyActivities, nextWeekPlan: allNextWeekPlan },
           manpower:   aggregatedManpower,
