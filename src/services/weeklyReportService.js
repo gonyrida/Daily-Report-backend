@@ -1864,6 +1864,7 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       const actualCoverImage = coverImageFromCover || coverImageFromIntro || '';
       
       const summary = {
+        reportId:      r._id?.toString(),
         projectId:     r.projectId,
         projectName:   project?.name || r.projectName,
         weekNumber:    r.weekNumber,
@@ -1886,6 +1887,32 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
           reportTitle: r.sections?.cover?.reportTitle || '',
           dateRange:   r.sections?.cover?.dateRange || '',
           employer:    r.sections?.cover?.employer || ''
+        },
+        // Include introduction data for master report intro section
+        introduction:  {
+          projectOverview: r.sections?.introduction?.projectOverview || '',
+          designNConstruction: r.sections?.introduction?.designNConstruction || '',
+          coverImage: r.sections?.introduction?.coverImage || ''
+        },
+        // Include letter data for master report letter section
+        letter: {
+          refNoPrefix: r.sections?.letter?.refNoPrefix || '',
+          weekNumber: r.sections?.letter?.weekNumber || '',
+          reportDate: r.sections?.letter?.reportDate || '',
+          recipientCompany: r.sections?.letter?.recipientCompany || '',
+          recipientLocation: r.sections?.letter?.recipientLocation || '',
+          recipientName: r.sections?.letter?.recipientName || '',
+          ccList: r.sections?.letter?.ccList || [],
+          letterBody: r.sections?.letter?.letterBody || '',
+          signatureImage: r.sections?.letter?.signatureImage || '',
+          signatoryName: r.sections?.letter?.signatoryName || '',
+          signatoryPosition: r.sections?.letter?.signatoryPosition || '',
+          constructorName: r.sections?.letter?.constructorName || '',
+          companyLocation: r.sections?.letter?.companyLocation || '',
+          companyPhone1: r.sections?.letter?.companyPhone1 || '',
+          companyPhone2: r.sections?.letter?.companyPhone2 || '',
+          companyEmail1: r.sections?.letter?.companyEmail1 || '',
+          companyEmail2: r.sections?.letter?.companyEmail2 || ''
         }
       };
       
@@ -1896,6 +1923,7 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
     const availableCoverImages = projectSummaries
       .filter(p => p.cover?.coverImage && p.cover.coverImage !== '')
       .map(p => ({
+        reportId: p.reportId,
         projectId: p.projectId,
         projectName: p.projectName,
         coverImage: p.cover.coverImage,
