@@ -1664,28 +1664,55 @@ const _extractProjectProgress = (report) => {
 
 /**
  * Aggregate manpower totals across all reports.
- * Returns { managementTotal, workingInteriorTotal, workingMEPTotal, grandTotal }
+ * Returns { managementTotal, workingInteriorTotal, workingMEPTotal, grandTotal,
+ *           managementDates, workingInteriorDates, workingMEPDates }
  */
 const _aggregateManpower = (reports) => {
   const sumTeam = (teamArr) => (teamArr || []).reduce((s, row) => s + (Number(row.thisWeek) || 0), 0);
+  const emptyDays = () => ({ fri: 0, sat: 0, sun: 0, mon: 0, tue: 0, wed: 0, thu: 0 });
+  const DAYS = ['fri', 'sat', 'sun', 'mon', 'tue', 'wed', 'thu'];
+
+  const sumTeamDays = (teamArr) => {
+    const result = emptyDays();
+    (teamArr || []).forEach(row => {
+      if (row.date) {
+        DAYS.forEach(day => { result[day] += Number(row.date[day]) || 0; });
+      }
+    });
+    return result;
+  };
 
   let managementTotal = 0;
   let workingInteriorTotal = 0;
   let workingMEPTotal = 0;
+  const managementDates = emptyDays();
+  const workingInteriorDates = emptyDays();
+  const workingMEPDates = emptyDays();
 
   reports.forEach(r => {
     const mp = r.sections?.resources?.manPower;
     if (!mp) return;
-    managementTotal    += sumTeam(mp.managementTeam);
+    managementTotal      += sumTeam(mp.managementTeam);
     workingInteriorTotal += sumTeam(mp.workingTeamInterior);
-    workingMEPTotal    += sumTeam(mp.workingTeamMEP);
+    workingMEPTotal      += sumTeam(mp.workingTeamMEP);
+    const mgmtDays  = sumTeamDays(mp.managementTeam);
+    const intDays   = sumTeamDays(mp.workingTeamInterior);
+    const mepDays   = sumTeamDays(mp.workingTeamMEP);
+    DAYS.forEach(day => {
+      managementDates[day]      += mgmtDays[day];
+      workingInteriorDates[day] += intDays[day];
+      workingMEPDates[day]      += mepDays[day];
+    });
   });
 
   return {
     managementTotal,
     workingInteriorTotal,
     workingMEPTotal,
-    grandTotal: managementTotal + workingInteriorTotal + workingMEPTotal
+    grandTotal: managementTotal + workingInteriorTotal + workingMEPTotal,
+    managementDates,
+    workingInteriorDates,
+    workingMEPDates,
   };
 };
 
@@ -1887,12 +1914,99 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       };
     });
 
-    // HSES: Aggregate training, inspection, permit, and text fields across all reports
+    // HSES: Aggregate training, inspection, permit, text fields, and photo references across all reports
     const hsesAcc = { training: [], inspection: [], permit: [], firstAidParts: [], otherParts: [] };
-    reports.forEach(r => {
+    
+    // Initialize unified HSE photo sections with empty entries array
+    const hsePhotoRefsAcc = {
+      hseToolboxMeeting: [{
+        id: 'unified-toolbox-meeting',
+        title: 'HSE Toolbox Meeting',
+        entries: []
+      }],
+      hseActivityPhotos: [{
+        id: 'unified-activity-photos',
+        title: 'HSE Activity Photos', 
+        entries: []
+      }]
+    };
+
+    // Helper function to add images with 2-per-entry limit
+    const addImagesToSection = (section, imagesWithMetadata) => {
+      const IMAGES_PER_ENTRY = 2;
+      
+      imagesWithMetadata.forEach((image) => {
+        // Find the last entry or create a new one
+        let currentEntry = section.entries[section.entries.length - 1];
+        
+        // If no entry exists or current entry is full, create new entry
+        if (!currentEntry || currentEntry.slots.length >= IMAGES_PER_ENTRY) {
+          const newEntry = {
+            id: `entry-${section.entries.length + 1}`,
+            slots: []
+          };
+          section.entries.push(newEntry);
+          currentEntry = newEntry;
+        }
+        
+        // Add image to current entry
+        currentEntry.slots.push(image);
+      });
+    };
+
+    reports.forEach((r) => {
       const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
       const hses = r.sections?.hses;
+
       if (!hses) return;
+      
+      // Aggregate HSE photo references - combine all images into unified sections
+      const photoRefs = hses.hsePhotoReferences;
+      if (photoRefs) {
+        // Process toolbox meeting photos
+        if (photoRefs.hseToolboxMeeting && Array.isArray(photoRefs.hseToolboxMeeting)) {
+          photoRefs.hseToolboxMeeting.forEach((section) => {
+            if (section.entries && Array.isArray(section.entries)) {
+              section.entries.forEach((entry) => {
+                if (entry.slots && Array.isArray(entry.slots)) {
+                  const imagesWithMetadata = entry.slots
+                    .filter(slot => slot.image && slot.image.trim() !== '')
+                    .map(slot => ({
+                      ...slot,
+                      projectSource: pName
+                    }));
+                  
+                  // Add images with 2-per-entry limit
+                  addImagesToSection(hsePhotoRefsAcc.hseToolboxMeeting[0], imagesWithMetadata);
+                }
+              });
+            }
+          });
+        }
+
+        // Process activity photos
+        if (photoRefs.hseActivityPhotos && Array.isArray(photoRefs.hseActivityPhotos)) {
+          photoRefs.hseActivityPhotos.forEach((section) => {
+            if (section.entries && Array.isArray(section.entries)) {
+              section.entries.forEach((entry) => {
+                if (entry.slots && Array.isArray(entry.slots)) {
+                  const imagesWithMetadata = entry.slots
+                    .filter(slot => slot.image && slot.image.trim() !== '')
+                    .map(slot => ({
+                      ...slot,
+                      projectSource: pName
+                    }));
+                  
+                  // Add images with 2-per-entry limit
+                  addImagesToSection(hsePhotoRefsAcc.hseActivityPhotos[0], imagesWithMetadata);
+                }
+              });
+            }
+          });
+        }
+      }
+      
+      // Aggregate basic HSE data (existing logic)
       (hses.training || []).forEach(t => {
         if (t.typeOfTraining?.trim() || t.date?.trim()) hsesAcc.training.push({ ...t, projectSource: pName });
       });
@@ -1905,9 +2019,57 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       if (hses.firstAidAccident?.trim()) hsesAcc.firstAidParts.push(`[${pName}] ${hses.firstAidAccident.trim()}`);
       if (hses.otherActivities?.trim()) hsesAcc.otherParts.push(`[${pName}] ${hses.otherActivities.trim()}`);
     });
+    
 
     const _sortByField = (arr, field) =>
       [...arr].sort((a, b) => new Date(a[field] || 0).getTime() - new Date(b[field] || 0).getTime());
+
+    // Aggregate materials and machinery data across all reports
+    const materialsAcc = [];
+    const machineryAcc = [];
+    
+    console.log('🔍 Starting resource aggregation for', reports.length, 'reports');
+    
+    reports.forEach((r) => {
+      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
+      
+      // Aggregate materials
+      if (r.sections?.resources?.material) {
+        console.log('🔍 Found materials in report:', r.projectName, '- Count:', r.sections.resources.material.length);
+        r.sections.resources.material.forEach((material) => {
+          if (material.description || material.title || material.supplier || material.deliveryDate) {
+            materialsAcc.push({
+              ...material,
+              title: material.title || material.description || 'Material',
+              description: material.description || '',
+              projectSource: pName
+            });
+            console.log('✅ Added material:', material.description || material.title || 'Unknown');
+          }
+        });
+      }
+      
+      // Aggregate machinery
+      if (r.sections?.resources?.machinery) {
+        console.log('🔍 Found machinery in report:', r.projectName, '- Count:', r.sections.resources.machinery.length);
+        r.sections.resources.machinery.forEach((equipment) => {
+          if (equipment.description || equipment.type || equipment.quantity || equipment.condition) {
+            machineryAcc.push({
+              ...equipment,
+              title: equipment.title || equipment.description || 'Machinery & Equipment',
+              type: equipment.type || equipment.description || '',
+              description: equipment.description || '',
+              projectSource: pName
+            });
+            console.log('✅ Added machinery:', equipment.description || equipment.type || 'Unknown');
+          }
+        });
+      }
+    });
+    
+    console.log('📊 Resource aggregation complete:');
+    console.log('  - Total materials:', materialsAcc.length);
+    console.log('  - Total machinery:', machineryAcc.length);
 
     const aggregatedHses = {
       training:         _sortByField(hsesAcc.training, 'date'),
@@ -1915,7 +2077,14 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       permit:           _sortByField(hsesAcc.permit, 'startDate'),
       firstAidAccident: hsesAcc.firstAidParts.join('\n\n'),
       otherActivities:  hsesAcc.otherParts.join('\n\n'),
+      hsePhotoReferences: {
+        hseToolboxMeeting: hsePhotoRefsAcc.hseToolboxMeeting,
+        hseActivityPhotos: hsePhotoRefsAcc.hseActivityPhotos
+      }
     };
+
+    // Sort materials and machinery by date
+    const _sortByDate = (arr) => [...arr].sort((a, b) => new Date(a.deliveryDate || a.date || 0).getTime() - new Date(b.deliveryDate || b.date || 0).getTime());
 
     // Lightweight per-project summary rows
     const projectSummaries = reports.map(r => {
@@ -2010,7 +2179,9 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
           issues:              allIssues,
           constructionProgress: constructionProgressByProject,
           qaqcStatus:          aggregatedQaqcStatus,
-          hses:                aggregatedHses
+          hses:                aggregatedHses,
+          materials:            _sortByDate(materialsAcc),
+          machinery:            _sortByDate(machineryAcc)
         }
       }
     };
