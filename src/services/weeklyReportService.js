@@ -1623,6 +1623,35 @@ const getCompanyWeeklyReports = async (companyId, page = 1, limit = 20, search =
 // ============================================================================
 
 /**
+ * Merge resource rows (manpower team / material / machinery) by description.
+ * All numeric fields (date.fri-thu, prevWeek, thisWeek, accumulated) are summed;
+ * non-numeric fields are taken from the first occurrence.
+ */
+const _mergeResourcesByDescription = (items) => {
+  const DAYS = ['fri', 'sat', 'sun', 'mon', 'tue', 'wed', 'thu'];
+  const map = new Map();
+
+  (items || []).forEach(item => {
+    const key = (item.description || '').trim().toLowerCase();
+    if (!map.has(key)) {
+      // eslint-disable-next-line no-unused-vars
+      const { _id, ...rest } = item;
+      const base = { ...rest, date: { fri: 0, sat: 0, sun: 0, mon: 0, tue: 0, wed: 0, thu: 0 }, prevWeek: 0, thisWeek: 0, accumulated: 0 };
+      map.set(key, base);
+    }
+    const acc = map.get(key);
+    if (item.date) {
+      DAYS.forEach(day => { acc.date[day] = (acc.date[day] || 0) + (Number(item.date[day]) || 0); });
+    }
+    acc.prevWeek    = (acc.prevWeek    || 0) + (Number(item.prevWeek)    || 0);
+    acc.thisWeek    = (acc.thisWeek    || 0) + (Number(item.thisWeek)    || 0);
+    acc.accumulated = (acc.accumulated || 0) + (Number(item.accumulated) || 0);
+  });
+
+  return Array.from(map.values());
+};
+
+/**
  * Sum thisWeek manpower values across all team arrays in a single report's resources.
  */
 const _sumReportManpower = (report) => {
@@ -2024,52 +2053,33 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
     const _sortByField = (arr, field) =>
       [...arr].sort((a, b) => new Date(a[field] || 0).getTime() - new Date(b[field] || 0).getTime());
 
-    // Aggregate materials and machinery data across all reports
-    const materialsAcc = [];
-    const machineryAcc = [];
-    
-    console.log('🔍 Starting resource aggregation for', reports.length, 'reports');
-    
+    // Aggregate resources: collect all rows per team/material/machinery, then merge by description
+    const _managementTeamAll    = [];
+    const _workingTeamInteriorAll = [];
+    const _workingTeamMEPAll    = [];
+    const _materialAll          = [];
+    const _machineryAll         = [];
+
     reports.forEach((r) => {
-      const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
-      
-      // Aggregate materials
-      if (r.sections?.resources?.material) {
-        console.log('🔍 Found materials in report:', r.projectName, '- Count:', r.sections.resources.material.length);
-        r.sections.resources.material.forEach((material) => {
-          if (material.description || material.title || material.supplier || material.deliveryDate) {
-            materialsAcc.push({
-              ...material,
-              title: material.title || material.description || 'Material',
-              description: material.description || '',
-              projectSource: pName
-            });
-            console.log('✅ Added material:', material.description || material.title || 'Unknown');
-          }
-        });
+      const mp = r.sections?.resources?.manPower;
+      if (mp) {
+        (mp.managementTeam     || []).forEach(item => { if (item.description) _managementTeamAll.push(item); });
+        (mp.workingTeamInterior|| []).forEach(item => { if (item.description) _workingTeamInteriorAll.push(item); });
+        (mp.workingTeamMEP     || []).forEach(item => { if (item.description) _workingTeamMEPAll.push(item); });
       }
-      
-      // Aggregate machinery
-      if (r.sections?.resources?.machinery) {
-        console.log('🔍 Found machinery in report:', r.projectName, '- Count:', r.sections.resources.machinery.length);
-        r.sections.resources.machinery.forEach((equipment) => {
-          if (equipment.description || equipment.type || equipment.quantity || equipment.condition) {
-            machineryAcc.push({
-              ...equipment,
-              title: equipment.title || equipment.description || 'Machinery & Equipment',
-              type: equipment.type || equipment.description || '',
-              description: equipment.description || '',
-              projectSource: pName
-            });
-            console.log('✅ Added machinery:', equipment.description || equipment.type || 'Unknown');
-          }
-        });
-      }
+      (r.sections?.resources?.material || []).forEach(item => { if (item.description) _materialAll.push(item); });
+      (r.sections?.resources?.machinery|| []).forEach(item => { if (item.description) _machineryAll.push(item); });
     });
-    
-    console.log('📊 Resource aggregation complete:');
-    console.log('  - Total materials:', materialsAcc.length);
-    console.log('  - Total machinery:', machineryAcc.length);
+
+    const aggregatedResources = {
+      manPower: {
+        managementTeam:      _mergeResourcesByDescription(_managementTeamAll),
+        workingTeamInterior: _mergeResourcesByDescription(_workingTeamInteriorAll),
+        workingTeamMEP:      _mergeResourcesByDescription(_workingTeamMEPAll)
+      },
+      material:  _mergeResourcesByDescription(_materialAll),
+      machinery: _mergeResourcesByDescription(_machineryAll)
+    };
 
     const aggregatedHses = {
       training:         _sortByField(hsesAcc.training, 'date'),
@@ -2082,9 +2092,6 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
         hseActivityPhotos: hsePhotoRefsAcc.hseActivityPhotos
       }
     };
-
-    // Sort materials and machinery by date
-    const _sortByDate = (arr) => [...arr].sort((a, b) => new Date(a.deliveryDate || a.date || 0).getTime() - new Date(b.deliveryDate || b.date || 0).getTime());
 
     // Lightweight per-project summary rows
     const projectSummaries = reports.map(r => {
@@ -2180,8 +2187,7 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
           constructionProgress: constructionProgressByProject,
           qaqcStatus:          aggregatedQaqcStatus,
           hses:                aggregatedHses,
-          materials:            _sortByDate(materialsAcc),
-          machinery:            _sortByDate(machineryAcc)
+          resources:            aggregatedResources
         }
       }
     };
