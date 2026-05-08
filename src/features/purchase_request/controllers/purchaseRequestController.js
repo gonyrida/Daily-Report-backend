@@ -677,8 +677,8 @@ exports.bulkDeletePurchaseRequests = async (req, res) => {
 
     if (user.role === 'user' || user.role === 'approver') {
       // Check if all steps are completed or approved
-      const allStepsCompleted = purchaseRequest.approvalWorkflow.some(step => step.status === 'approved');
-      if (allStepsCompleted || purchaseRequest.status === 'revised' || purchaseRequest.status === 'rejected' || purchaseRequest.status === 'approved') {
+      const allStepsCompleted = purchaseRequests.some(pr => pr.approvalWorkflow.some(step => step.status === 'approved'));
+      if (allStepsCompleted || purchaseRequests.some(pr => pr.status === 'revised') || purchaseRequests.some(pr => pr.status === 'rejected') || purchaseRequests.some(pr => pr.status === 'approved')) {
         return res.status(400).json({
           success: false,
           message: "Cannot delete purchase request. Some steps has been acted on already"
