@@ -293,6 +293,65 @@ exports.deleteFolder = async (req, res) => {
   }
 };
 
+// @desc    Get master schedule for a folder
+// @route   GET /api/folders/:id/master-schedule
+// @access  Private
+exports.getFolderSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const folder = await Folder.findOne({
+      _id: id,
+      companyId: req.user.companyId,
+      isActive: true
+    }).select('masterSchedule');
+
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: folder.masterSchedule || []
+    });
+  } catch (error) {
+    console.error('Get folder schedule error:', error);
+    res.status(500).json({ error: 'Server error retrieving folder schedule' });
+  }
+};
+
+// @desc    Update master schedule for a folder
+// @route   PATCH /api/folders/:id/master-schedule
+// @access  Private
+exports.updateFolderSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { masterSchedule } = req.body;
+
+    if (!Array.isArray(masterSchedule)) {
+      return res.status(400).json({ error: 'masterSchedule must be an array' });
+    }
+
+    const folder = await Folder.findOneAndUpdate(
+      { _id: id, companyId: req.user.companyId, isActive: true },
+      { $set: { masterSchedule } },
+      { new: true, runValidators: true }
+    ).select('masterSchedule');
+
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: folder.masterSchedule
+    });
+  } catch (error) {
+    console.error('Update folder schedule error:', error);
+    res.status(500).json({ error: 'Server error updating folder schedule' });
+  }
+};
+
 // @desc    Get projects in a folder
 // @route   GET /api/folders/:id/projects
 // @access  Private
