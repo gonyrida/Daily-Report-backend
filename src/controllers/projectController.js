@@ -114,7 +114,8 @@ exports.getUserProjects = async (req, res) => {
         
         return {
           ...project.toObject(),
-          reportCount: dailySubmittedCount + weeklySubmittedCount  // Count both daily and weekly reports
+          reportCount: dailySubmittedCount + weeklySubmittedCount,  // Count both daily and weekly reports
+          weeklyReportCount: weeklySubmittedCount  // Count only weekly reports for Master Report
         };
       })
     );

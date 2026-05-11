@@ -56,7 +56,8 @@ const transformActivitiesToFrontend = (activities) => {
     percentage: activity.percentage, // Keep legacy field if present
     source: activity.source || "manual",
     bulkImportId: activity.bulkImportId,
-    addedAt: activity.addedAt
+    addedAt: activity.addedAt,
+    sourceId: activity.sourceId || undefined
   }));
 };
 
@@ -1855,6 +1856,7 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
       return (r.sections?.activities?.weeklyActivities || []).map(a => ({
         ...a,
+        id: a.sourceId || undefined,
         projectSource: pName
       }));
     });
@@ -1863,6 +1865,7 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
       return (r.sections?.activities?.nextWeekPlan || []).map(a => ({
         ...a,
+        id: a.sourceId || undefined,
         projectSource: pName
       }));
     });

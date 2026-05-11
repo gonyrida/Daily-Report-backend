@@ -115,6 +115,7 @@ const weeklyReportSchema = new mongoose.Schema({
         source: { type: String, enum: ["manual", "bulk", "construction-progress"], default: "manual" }, // NEW: Track how activity was added
         bulkImportId: String, // NEW: Track which bulk import batch this belongs to
         addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        sourceId: String, // Hierarchy ID from construction progress (e.g. "I.", "1", "1.1")
         // Legacy support for old nested structure
         percentage: String, // Keep for backward compatibility
         subActivities: [{
@@ -136,6 +137,7 @@ const weeklyReportSchema = new mongoose.Schema({
         source: { type: String, enum: ["manual", "bulk", "construction-progress"], default: "manual" }, // NEW: Track how activity was added
         bulkImportId: String, // NEW: Track which bulk import batch this belongs to
         addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        sourceId: String, // Hierarchy ID from construction progress (e.g. "I.", "1", "1.1")
         // Legacy support for old nested structure
         percentage: String, // Keep for backward compatibility
         subActivities: [{
