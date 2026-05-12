@@ -7,6 +7,7 @@ const {
   getPurchaseRequestById,
   updatePurchaseRequestStatus,
   deletePurchaseRequest,
+  bulkDeletePurchaseRequests,
   getAllUsers,
   getMyPurchaseRequests,
   updatePurchaseRequest,
@@ -44,6 +45,7 @@ router.get("/pr-summary/:projectId/:id", authenticateToken, getProjectPurchaseRe
 // ../controllers/purchaseRequestController (2)
 router.get("/my-requests", authenticateToken, getMyPurchaseRequests);
 router.get('/users', authenticateToken, getAllUsers);
+router.delete("/bulk", authenticateToken, bulkDeletePurchaseRequests);
 router.get("/:id", authenticateToken, getPurchaseRequestById);
 
 // ../controllers/requestAuditLogController

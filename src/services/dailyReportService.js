@@ -740,7 +740,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
       report.nextDayPlan = updateTextField(report.nextDayPlan, processedReportData.nextDayPlan, 'replace');
       
       // Update resource arrays with rolling totals
+      report.firstSectionTitle = processedReportData.firstSectionTitle || report.firstSectionTitle || "Management Team";
       report.managementTeam = managementTeam;
+      report.secondSectionTitle = processedReportData.secondSectionTitle || report.secondSectionTitle || "Site Team";
       report.workingTeamInterior = workingTeamInterior;
       report.workingTeamMEP = workingTeamMEP;
       report.workingTeam = workingTeam; // Keep backward compatibility
@@ -765,7 +767,9 @@ const upsertDailyReport = async (userId, reportData, companyId) => {
         // Add projectId if provided (for reliable project linking)
         ...(reportData.projectId && { projectId: reportData.projectId }),
         ...processedReportData, // 🚀 Use processed data with Supabase URLs
+        firstSectionTitle: processedReportData.firstSectionTitle || "Management Team",
         managementTeam,
+        secondSectionTitle: processedReportData.secondSectionTitle || "Site Team",
         workingTeamInterior,
         workingTeamMEP,
         workingTeam, // Keep backward compatibility

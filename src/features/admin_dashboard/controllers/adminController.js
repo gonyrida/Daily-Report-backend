@@ -50,10 +50,32 @@ exports.getAllUsers = async (req, res) => {
     }
  
     const { page = 1, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    //Extract filters from query parameters
+    const { role, search } = req.query;
  
     // Use the requesting admin's companyId automatically
     const filter = { companyId: requestingUser.companyId };
+
+    if (role && role !== "all") {
+      filter.role = role;
+    }
+
+    // Future Optimization Tips: Either use MongoDB Atlas Search (Lucene) or Create text indexes 
+    if (search) {
+      // Use $or to check multiple fields
+      // Split search into keywords for more flexible matching
+      const keywords = search.split(" ").filter(Boolean);
+      
+      filter.$or = [
+        { firstName: { $regex: search, $options: "i" } },
+        { lastName: { $regex: search, $options: "i" } },
+        // Advanced: Check if keywords match either field
+        { firstName: { $in: keywords.map(k => new RegExp(k, 'i')) } },
+        { lastName: { $in: keywords.map(k => new RegExp(k, 'i')) } }
+      ];
+    }
  
     const users = await User.find(filter)
       .select('-password')
@@ -168,7 +190,7 @@ exports.createUser = async (req, res) => {
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { firstName, lastName, email, role, position, department, orgLevel } = req.body;
+    const { firstName, lastName, email, role, position, department, password, orgLevel } = req.body;
     
     const requestingUser = await User.findById(req.user.userId);
     
@@ -197,6 +219,7 @@ exports.updateUser = async (req, res) => {
       });
     }
 
+    // TODO: Future update. find ways to update user without doing both update and password update
     // Update user fields
     const updatedUser = await User.findByIdAndUpdate(
       id,
@@ -210,12 +233,17 @@ exports.updateUser = async (req, res) => {
         orgLevel: orgLevel !== undefined ? orgLevel : userToUpdate.orgLevel
       },
       { new: true, runValidators: true }
-    ).select('-password');
+    );
+
+    // Update password if exist
+    if (password) {
+      updatedUser.password = password;
+      await updatedUser.save();
+    }
 
     res.status(200).json({
       success: true,
       message: "User updated successfully",
-      data: updatedUser
     });
 
   } catch (error) {
