@@ -347,6 +347,91 @@ const rejectWeeklyReport = async (req, res) => {
 };
 
 /**
+ * Aggregate images from daily reports
+ */
+const aggregateImages = async (req, res) => {
+  try {
+    const { projectIdentifier, startDate, endDate, useProjectId, maxImagesPerReport } = req.query;
+
+    if (!projectIdentifier || !startDate || !endDate) {
+      return res.status(400).json({
+        success: false,
+        error: 'Missing required parameters: projectIdentifier, startDate, endDate'
+      });
+    }
+
+    const options = {
+      useProjectId: useProjectId === 'true',
+      maxImagesPerReport: maxImagesPerReport ? parseInt(maxImagesPerReport) : 2
+    };
+
+    const result = await weeklyReportService.aggregateWeeklyImages(
+      projectIdentifier,
+      new Date(startDate),
+      new Date(endDate),
+      options
+    );
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('Controller error in aggregateImages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
+/**
+ * Update weekly report with aggregated images
+ */
+const updateReportImages = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { maxImagesPerReport } = req.body;
+
+    const options = {
+      maxImagesPerReport: maxImagesPerReport ? parseInt(maxImagesPerReport) : 2
+    };
+
+    const result = await weeklyReportService.updateReportImages(id, options);
+
+    if (result.success) {
+      res.status(200).json({
+        success: true,
+        data: result.data,
+        aggregated: result.aggregated,
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        error: result.error,
+        details: result.details
+      });
+    }
+  } catch (error) {
+    console.error('Controller error in updateReportImages:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+};
+
+/**
  * Auto-save weekly report (for real-time saving)
  */
 const autoSaveWeeklyReport = async (req, res) => {
@@ -667,6 +752,36 @@ const getCompanyWeeklyReports = async (req, res) => {
   }
 };
 
+/**
+ * GET /api/weekly-reports/master?folderId=xxx&weekNumber=xx
+ * Dynamically aggregate all project reports in a folder for a given week.
+ * No data is stored – computed on demand.
+ */
+const getMasterReport = async (req, res) => {
+  try {
+    const { folderId, weekNumber } = req.query;
+    const companyId = req.user?.companyId;
+
+    if (!folderId) {
+      return res.status(400).json({ success: false, error: 'folderId is required' });
+    }
+    if (!weekNumber || isNaN(parseInt(weekNumber))) {
+      return res.status(400).json({ success: false, error: 'weekNumber must be a valid integer' });
+    }
+
+    const result = await weeklyReportService.getMasterReport(folderId, parseInt(weekNumber), companyId);
+
+    if (result.success) {
+      res.status(200).json({ success: true, data: result.data });
+    } else {
+      res.status(400).json({ success: false, error: result.error, details: result.details });
+    }
+  } catch (error) {
+    console.error('Controller error in getMasterReport:', error);
+    res.status(500).json({ success: false, error: 'Internal server error' });
+  }
+};
+
 module.exports = {
   getWeeklyReports,
   getWeeklyReportsMeta,
@@ -685,5 +800,10 @@ module.exports = {
   getCompanyWeeklyReports,
   // Manpower aggregation endpoints
   aggregateManpower,
-  updateReportManpower
+  updateReportManpower,
+  // Image aggregation endpoints
+  aggregateImages,
+  updateReportImages,
+  // Master report (folder-level aggregation)
+  getMasterReport
 };

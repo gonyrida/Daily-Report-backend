@@ -112,9 +112,10 @@ const weeklyReportSchema = new mongoose.Schema({
       weeklyActivities: [{
         description: String,
         percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
-        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        source: { type: String, enum: ["manual", "bulk", "construction-progress"], default: "manual" }, // NEW: Track how activity was added
         bulkImportId: String, // NEW: Track which bulk import batch this belongs to
         addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        sourceId: String, // Hierarchy ID from construction progress (e.g. "I.", "1", "1.1")
         // Legacy support for old nested structure
         percentage: String, // Keep for backward compatibility
         subActivities: [{
@@ -133,9 +134,10 @@ const weeklyReportSchema = new mongoose.Schema({
       nextWeekPlan: [{
         description: String,
         percent: { type: Number, default: 0 }, // Changed from percentage: String to percent: Number
-        source: { type: String, enum: ["manual", "bulk"], default: "manual" }, // NEW: Track how activity was added
+        source: { type: String, enum: ["manual", "bulk", "construction-progress"], default: "manual" }, // NEW: Track how activity was added
         bulkImportId: String, // NEW: Track which bulk import batch this belongs to
         addedAt: { type: Date, default: Date.now }, // NEW: Track when activity was added
+        sourceId: String, // Hierarchy ID from construction progress (e.g. "I.", "1", "1.1")
         // Legacy support for old nested structure
         percentage: String, // Keep for backward compatibility
         subActivities: [{
@@ -382,6 +384,15 @@ const weeklyReportSchema = new mongoose.Schema({
       material: [{
         description: String,
         unit: String,
+        date: {
+          fri: { type: Number, default: 0 },
+          sat: { type: Number, default: 0 },
+          sun: { type: Number, default: 0 },
+          mon: { type: Number, default: 0 },
+          tue: { type: Number, default: 0 },
+          wed: { type: Number, default: 0 },
+          thu: { type: Number, default: 0 }
+        },
         prevWeek: { type: Number, default: 0 },
         thisWeek: { type: Number, default: 0 },
         accumulated: { type: Number, default: 0 }
@@ -406,8 +417,10 @@ const weeklyReportSchema = new mongoose.Schema({
     photos: {
       title: { type: String, default: "Site Activities Photos" },
       locations: [{
-        location: String,
+        id: String,
+        title: String,
         entries: [{
+          id: String,
           slots: [{
             image: String,
             caption: String

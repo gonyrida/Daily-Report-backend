@@ -1,6 +1,7 @@
 const Folder = require('../models/folderModel');
 const Project = require('../models/projectModel');
 const DailyReport = require('../models/dailyReportModel');
+const WeeklyReport = require('../models/WeeklyReport');
 
 // @desc    Create a new folder
 // @route   POST /api/folders
@@ -76,24 +77,51 @@ exports.getFoldersWithProjects = async (req, res) => {
         })
         .sort({ updatedAt: -1 })
         .select('-__v');
-        
-        // Calculate report count for folder
-        const projectIds = projects.map(p => p._id);
+
+        // Calculate daily report count for folder
         const reportCount = await DailyReport.countDocuments({
           projectName: { $in: projects.map(p => p.name) },
           status: "submitted"
         });
-        
+
+        // Enrich projects with weekly report counts and dates
+        const projectsWithWeeklyCounts = await Promise.all(
+          projects.map(async (project) => {
+            const [weeklyReportCount, lastWeeklyReport] = await Promise.all([
+              WeeklyReport.countDocuments({ projectId: project._id, status: "submitted" }),
+              WeeklyReport.findOne({ projectId: project._id, status: "submitted" })
+                .sort({ updatedAt: -1 })
+                .select('updatedAt')
+            ]);
+            return {
+              ...project.toObject(),
+              weeklyReportCount,
+              lastWeeklyReportDate: lastWeeklyReport?.updatedAt ?? null
+            };
+          })
+        );
+
+        const weeklyReportCount = projectsWithWeeklyCounts.reduce(
+          (sum, p) => sum + (p.weeklyReportCount || 0), 0
+        );
+
+        const lastWeeklyReportDate = projectsWithWeeklyCounts
+          .map(p => p.lastWeeklyReportDate)
+          .filter(Boolean)
+          .sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null;
+
         return {
           ...folder.toObject(),
-          projects: projects,
-          reportCount: reportCount
+          projects: projectsWithWeeklyCounts,
+          reportCount: reportCount,
+          weeklyReportCount: weeklyReportCount,
+          lastWeeklyReportDate: lastWeeklyReportDate
         };
       })
     );
-    
+
     // Also get projects without folders (root level)
-    const rootProjects = await Project.find({
+    const rootProjectsRaw = await Project.find({
       $or: [
         { folderId: { $exists: false } },
         { folderId: null }
@@ -103,7 +131,23 @@ exports.getFoldersWithProjects = async (req, res) => {
     })
     .sort({ updatedAt: -1 })
     .select('-__v');
-    
+
+    const rootProjects = await Promise.all(
+      rootProjectsRaw.map(async (project) => {
+        const [weeklyReportCount, lastWeeklyReport] = await Promise.all([
+          WeeklyReport.countDocuments({ projectId: project._id, status: "submitted" }),
+          WeeklyReport.findOne({ projectId: project._id, status: "submitted" })
+            .sort({ updatedAt: -1 })
+            .select('updatedAt')
+        ]);
+        return {
+          ...project.toObject(),
+          weeklyReportCount,
+          lastWeeklyReportDate: lastWeeklyReport?.updatedAt ?? null
+        };
+      })
+    );
+
     res.status(200).json({
       success: true,
       count: foldersWithProjects.length,
@@ -290,6 +334,65 @@ exports.deleteFolder = async (req, res) => {
       error: 'Failed to delete folder',
       details: error.message 
     });
+  }
+};
+
+// @desc    Get master schedule for a folder
+// @route   GET /api/folders/:id/master-schedule
+// @access  Private
+exports.getFolderSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const folder = await Folder.findOne({
+      _id: id,
+      companyId: req.user.companyId,
+      isActive: true
+    }).select('masterSchedule');
+
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: folder.masterSchedule || []
+    });
+  } catch (error) {
+    console.error('Get folder schedule error:', error);
+    res.status(500).json({ error: 'Server error retrieving folder schedule' });
+  }
+};
+
+// @desc    Update master schedule for a folder
+// @route   PATCH /api/folders/:id/master-schedule
+// @access  Private
+exports.updateFolderSchedule = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { masterSchedule } = req.body;
+
+    if (!Array.isArray(masterSchedule)) {
+      return res.status(400).json({ error: 'masterSchedule must be an array' });
+    }
+
+    const folder = await Folder.findOneAndUpdate(
+      { _id: id, companyId: req.user.companyId, isActive: true },
+      { $set: { masterSchedule } },
+      { new: true, runValidators: true }
+    ).select('masterSchedule');
+
+    if (!folder) {
+      return res.status(404).json({ error: 'Folder not found' });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: folder.masterSchedule
+    });
+  } catch (error) {
+    console.error('Update folder schedule error:', error);
+    res.status(500).json({ error: 'Server error updating folder schedule' });
   }
 };
 
