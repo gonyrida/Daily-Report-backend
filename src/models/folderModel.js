@@ -1,5 +1,20 @@
 const mongoose = require('mongoose');
 
+const masterScheduleEntrySchema = new mongoose.Schema({
+  id: { type: String },
+  type: { type: String, enum: ['document', 'image', 'chart', 'pdf'] },
+  title: { type: String },
+  description: { type: String },
+  date: { type: String },
+  fileName: { type: String },
+  supabaseUrl: { type: String },
+  supabasePath: { type: String },
+  fileSize: { type: Number },
+  fileType: { type: String },
+  caption: { type: String },
+  convertedImages: [{ image: String, caption: String }]
+}, { _id: false });
+
 const folderSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -34,6 +49,10 @@ const folderSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  masterSchedule: {
+    type: [masterScheduleEntrySchema],
+    default: []
   }
 }, {
   timestamps: true,

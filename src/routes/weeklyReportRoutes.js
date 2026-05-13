@@ -18,7 +18,10 @@ const {
   validateWeeklyReport,
   aggregateManpower,
   updateReportManpower,
-  getCompanyWeeklyReports
+  aggregateImages,
+  updateReportImages,
+  getCompanyWeeklyReports,
+  getMasterReport
 } = require('../controllers/weeklyReportController');
 
 // GET /api/weekly-reports - Get all weekly reports for user
@@ -32,6 +35,9 @@ router.get('/meta', getWeeklyReportsMeta);
 
 // GET /api/weekly-reports/template - Get weekly report template
 router.get('/template', getWeeklyReportTemplate);
+
+// GET /api/weekly-reports/master - Folder-level aggregated master report (MUST precede /:id)
+router.get('/master', getMasterReport);
 
 // Construction Progress Routes - MUST come before /:id route
 // GET /api/weekly-reports/:id/construction-progress
@@ -47,6 +53,12 @@ router.put('/:id/construction-progress', require('../controllers/constructionPro
 
 // DELETE /api/weekly-reports/:id/construction-progress
 router.delete('/:id/construction-progress', require('../controllers/constructionProgressController').deleteConstructionProgress);
+
+// GET /api/weekly-reports/aggregate-images - Aggregate images from daily reports (preview only) - MUST come before /:id
+router.get('/aggregate-images', aggregateImages);
+
+// POST /api/weekly-reports/aggregate-manpower - Aggregate manpower data - MUST come before /:id
+router.post('/aggregate-manpower', aggregateManpower);
 
 // GET /api/weekly-reports/:id - Get single weekly report (MUST come after specific routes)
 router.get('/:id', getWeeklyReportById);
@@ -295,11 +307,11 @@ router.patch('/:id/master-schedule', async (req, res) => {
 // POST /api/weekly-reports/:id/validate - Validate weekly report
 router.post('/:id/validate', validateWeeklyReport);
 
-// POST /api/weekly-reports/aggregate-manpower - Aggregate manpower data
-router.post('/aggregate-manpower', aggregateManpower);
-
 // POST /api/weekly-reports/:id/update-manpower - Update report with aggregated manpower
 router.post('/:id/update-manpower', updateReportManpower);
+
+// POST /api/weekly-reports/:id/update-images - Update report with aggregated images
+router.post('/:id/update-images', updateReportImages);
 
 // POST /api/weekly-reports/:id/master-schedule/:entryId/convert-pdf - Convert PDF to images
 router.post('/:id/master-schedule/:entryId/convert-pdf', async (req, res) => {

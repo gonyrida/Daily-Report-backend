@@ -129,7 +129,9 @@ const dailyReportSchema = new mongoose.Schema(
       default: "",
     },
 
+    firstSectionTitle: { type: String, default: "" },
     managementTeam: [ResourceSchema],
+    secondSectionTitle: { type: String, default: "" },
     workingTeamInterior: [ResourceSchema],
     workingTeamMEP: [ResourceSchema],
     materials: [ResourceSchema],
