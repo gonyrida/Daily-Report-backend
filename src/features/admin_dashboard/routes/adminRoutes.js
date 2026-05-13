@@ -5,7 +5,8 @@ const {
   getAllUsers,
   getRecentUsers,
   createUser,
-  updateUser
+  updateUser,
+  deleteUser
 } = require("../controllers/adminController");
 
 const router = express.Router();
@@ -15,4 +16,5 @@ router.get("/all-users", authenticateToken, getAllUsers);
 router.get("/recent-users", authenticateToken, getRecentUsers);
 router.post("/users", authenticateToken, createUser);
 router.put("/users/:id", authenticateToken, updateUser);
+router.delete("/users/:id", authenticateToken, deleteUser);
 module.exports = router;

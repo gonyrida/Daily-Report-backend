@@ -254,3 +254,49 @@ exports.updateUser = async (req, res) => {
     });
   }
 };
+
+// @desc    Delete user (admin only)
+// @route   DELETE /api/admin/users/:id
+// @access  Admin
+exports.deleteUser = async (req, res) => {
+  try {
+    const requestingUser = await User.findById(req.user.userId);
+    if (!requestingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "Requesting User not found"
+      });
+    } else if (requestingUser.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: "Unable to perform action"
+      });
+    }
+
+    const user = await User.findOne({
+      _id: req.params.id,
+      companyId: requestingUser.companyId
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    res.status(200).json({
+      success: true,
+      message: "User deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error deleting user"
+    });
+  }
+};
