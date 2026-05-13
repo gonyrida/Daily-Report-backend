@@ -65,10 +65,10 @@ const extractImageUrl = (imageData) => {
  * Aggregate HSE images from daily reports
  * Daily Report structure: hse[].images[] with parallel footers[] OR referenceSections[].entries[].slots[]
  * @param {Array} dailyReports - Array of daily reports
- * @param {number} maxPerReport - Maximum images to collect per daily report (default: 2)
+ * @param {number} maxPerReport - Maximum images to collect per daily report (default: unlimited)
  * @returns {Object} - Object with toolboxPhotos and activityPhotos arrays
  */
-const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
+const aggregateHSEImages = (dailyReports, maxPerReport = Infinity) => {
   const toolboxPhotos = [];
   const activityPhotos = [];
   
@@ -92,7 +92,7 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
       // Get current count for this section type
       const getCurrentCount = () => isToolbox ? toolboxCollected : activityCollected;
       
-      for (let i = 0; i < images.length && getCurrentCount() < maxPerReport; i++) {
+      for (let i = 0; i < images.length; i++) {
         const imageUrl = extractImageUrl(images[i]);
         if (!imageUrl) continue;
         
@@ -138,7 +138,7 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
           if (!entry.slots) continue;
           
           for (const slot of entry.slots) {
-            // Check individual section limit
+            // Check if we've reached limit for this section type
             if (isToolbox && toolboxCollected >= maxPerReport) break;
             if (isActivity && activityCollected >= maxPerReport) break;
             
@@ -161,7 +161,7 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
             }
           }
           
-          // Check individual section limit
+          // Check if we've reached limit for this section type
           if (isToolbox && toolboxCollected >= maxPerReport) break;
           if (isActivity && activityCollected >= maxPerReport) break;
         }
@@ -176,10 +176,10 @@ const aggregateHSEImages = (dailyReports, maxPerReport = 2) => {
  * Aggregate Site Activity images from daily reports
  * Daily Report structure: site_ref[].images[] with parallel footers[]
  * @param {Array} dailyReports - Array of daily reports
- * @param {number} maxPerReport - Maximum images to collect per daily report (default: 2)
+ * @param {number} maxPerReport - Maximum images to collect per daily report (default: unlimited)
  * @returns {Array<AggregatedPhoto>} - Aggregated Site photos
  */
-const aggregateSiteImages = (dailyReports, maxPerReport = 2) => {
+const aggregateSiteImages = (dailyReports, maxPerReport = Infinity) => {
   const sitePhotos = [];
   
   for (const report of dailyReports) {
@@ -190,7 +190,7 @@ const aggregateSiteImages = (dailyReports, maxPerReport = 2) => {
       const images = section.images || [];
       const footers = section.footers || [];
       
-      for (let i = 0; i < images.length && collected < maxPerReport; i++) {
+      for (let i = 0; i < images.length; i++) {
         const imageUrl = extractImageUrl(images[i]);
         if (!imageUrl) continue;
         
@@ -298,13 +298,13 @@ const transformSiteToWeeklyFormat = (sitePhotos) => {
  * @param {Date} endDate - Week end date (Thursday)
  * @param {Object} options - Options for aggregation
  * @param {boolean} options.useProjectId - Whether to use projectId instead of projectName
- * @param {number} options.maxImagesPerReport - Max images to collect per daily report (default: 2)
+ * @param {number} options.maxImagesPerReport - Max images to collect per daily report (default: unlimited)
  * @returns {Promise<Object>} - Aggregated image data for weekly report
  */
 const aggregateImages = async (projectIdentifier, startDate, endDate, options = {}) => {
   const { 
     useProjectId = false, 
-    maxImagesPerReport = 2 
+    maxImagesPerReport = Infinity 
   } = options;
   
   try {
