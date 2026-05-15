@@ -1841,10 +1841,12 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
     const projectIds = projects.map(p => p._id);
 
     // Step 2: Single query – all weekly reports for those projects in the given week (no N+1)
+    // Sort by submittedAt ASC so the first-submitted report is always processed first,
+    // which gives construction progress items a stable display-ID order.
     const reports = await WeeklyReport.find({
       projectId:  { $in: projectIds },
       weekNumber: parseInt(weekNumber)
-    }).lean();
+    }).sort({ submittedAt: 1, createdAt: 1 }).lean();
 
     // Build project lookup map for O(1) access
     const projectMap = Object.fromEntries(projects.map(p => [p._id.toString(), p]));
@@ -1918,7 +1920,9 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
       } else {
         constructionProgressByProject[displayProjectName] = {
           projectInfo,
-          items: mappedItems
+          items: mappedItems,
+          reportId: r._id?.toString(),
+          submittedAt: r.submittedAt || r.createdAt || null,
         };
       }
     });
