@@ -21,6 +21,17 @@ const {
   getDailyReportsByLocation
 } = require("../controllers/dailyReportController");
 
+const {
+  getAllOptions,
+  bulkUpsertAll,
+  renameItem,
+  removeItem,
+  renameUnit,
+  removeUnit,
+  renameRole,
+  removeRole
+} = require("../controllers/dailyReportDropdownController");
+
 // Import bulk import functions from weekly report service
 const {
   bulkImportActivities,
@@ -35,12 +46,20 @@ router.get("/projects", authenticateToken, getCompanyProjects);
 router.get("/company", authenticateToken, getCompanyReports);
 router.get("/locations", authenticateToken, getLocations);
 router.get("/by-location", authenticateToken, getDailyReportsByLocation);
+router.post("/dropdown-options", authenticateToken, bulkUpsertAll)
+router.get("/dropdown-options", authenticateToken, getAllOptions)
 router.get("/:reportId", authenticateToken, getReportById);
 router.post("/", authenticateToken, createNewReport);
 router.post("/blank", authenticateToken, createBlankReport); // New: Create blank report immediately
 router.post("/upsert", authenticateToken, upsertDailyReport); // New: Upsert with proper update/insert logic
 router.patch("/:reportId/auto-save", authenticateToken, autoSaveReport); // New: Auto-save (partial update)
 router.post("/submit", authenticateToken, submitReport);
+router.put("/dropdown-options/item/:id", authenticateToken, renameItem)
+router.delete("/dropdown-options/item/:id", authenticateToken, removeItem)
+router.put("/dropdown-options/unit/:id", authenticateToken, renameUnit)
+router.delete("/dropdown-options/unit/:id", authenticateToken, removeUnit)
+router.put("/dropdown-options/role/:id", authenticateToken, renameRole)
+router.delete("/dropdown-options/role/:id", authenticateToken, removeRole)
 
 // NEW: Bulk import routes
 router.post("/:reportId/bulk-import", authenticateToken, async (req, res) => {
