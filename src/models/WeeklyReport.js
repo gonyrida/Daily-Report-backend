@@ -458,7 +458,9 @@ const weeklyReportSchema = new mongoose.Schema({
         height: { type: Number, default: 0 }
       }]
     }], // Array without default to prevent override
-    
+
+    scheduleNotes: { type: String, default: "" },
+
     constructionProgress: {
       projectInfo: {
         project: { type: String, default: "" },
