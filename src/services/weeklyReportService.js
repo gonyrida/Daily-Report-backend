@@ -1900,15 +1900,25 @@ const getMasterReport = async (folderId, weekNumber, companyId) => {
     reports.forEach(r => {
       const pName = projectMap[r.projectId?.toString()]?.name || r.projectName;
       const cpItems = r.sections?.constructionProgress?.items || [];
-      if (cpItems.length > 0) {
-        const projectInfo = r.sections?.constructionProgress?.projectInfo || { project: pName, subtitle: '' };
-        const displayProjectName = projectInfo.project || pName;
+      if (cpItems.length === 0) return;
+
+      const projectInfo = r.sections?.constructionProgress?.projectInfo || { project: pName, subtitle: '' };
+      const displayProjectName = projectInfo.project || pName;
+      const mappedItems = cpItems.map(item => ({ ...item, projectSource: displayProjectName }));
+
+      if (constructionProgressByProject[displayProjectName]) {
+        // Key already exists: merge items, skip duplicates by id
+        const existingIds = new Set(
+          constructionProgressByProject[displayProjectName].items
+            .map(i => i.id)
+            .filter(Boolean)
+        );
+        const newItems = mappedItems.filter(i => !i.id || !existingIds.has(i.id));
+        constructionProgressByProject[displayProjectName].items.push(...newItems);
+      } else {
         constructionProgressByProject[displayProjectName] = {
-          projectInfo: projectInfo,
-          items: cpItems.map(item => ({
-            ...item,
-            projectSource: displayProjectName
-          }))
+          projectInfo,
+          items: mappedItems
         };
       }
     });
