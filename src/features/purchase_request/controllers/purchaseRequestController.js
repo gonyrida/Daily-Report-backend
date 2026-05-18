@@ -291,6 +291,7 @@ exports.getPurchaseRequests = async (req, res) => {
     // Extract filter parameters (handle __all__ as no filter)
     const { status, subProject, purpose, requester } = req.query;
     const effectiveStatus = status && status !== '__all__' ? status : null;
+    // TODO: Suppose to now be filter by projectCode instead of subProject
     const effectiveSubProject = subProject && subProject !== '__all__' ? subProject : null;
     const effectivePurpose = purpose && purpose !== '__all__' ? purpose : null;
     const effectiveRequester = requester && requester !== '__all__' ? requester : null;
@@ -324,6 +325,7 @@ exports.getPurchaseRequests = async (req, res) => {
       ...(effectiveStatus && { status: effectiveStatus }),
       ...(effectivePurpose && { purpose: { $regex: effectivePurpose, $options: 'i' } }),
       ...(effectiveRequester && { requesterName: { $regex: effectiveRequester, $options: 'i' } }),
+      // TODO: Suppose to now be filter by projectCode instead of subProject
       ...(effectiveSubProject && { 'projectFrom.subProject': { $regex: effectiveSubProject, $options: 'i' } })
     };
     const totalCount = await PurchaseRequest.countDocuments(countQuery);
@@ -345,6 +347,7 @@ exports.getPurchaseRequests = async (req, res) => {
           ...(effectiveStatus && { 'purchaseRequests.status': effectiveStatus }),
           ...(effectivePurpose && { 'purchaseRequests.purpose': { $regex: effectivePurpose, $options: 'i' } }),
           ...(effectiveRequester && { 'purchaseRequests.requesterName': { $regex: effectiveRequester, $options: 'i' } }),
+          // TODO: Suppose to now be filter by projectCode instead of subProject
           ...(effectiveSubProject && { 'purchaseRequests.projectFrom.subProject': { $regex: effectiveSubProject, $options: 'i' } })
         }
       },
@@ -755,6 +758,7 @@ exports.getMyPurchaseRequests = async (req, res) => {
       query.status = status;
     }
 
+    // TODO: Suppose to now be filter by projectCode instead of subProject
     // Filter by subProject name if provided (from projectFrom.subProject)
     if (subProject) {
       query['projectFrom.subProject'] = { $regex: subProject, $options: 'i' };
