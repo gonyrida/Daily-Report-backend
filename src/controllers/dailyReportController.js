@@ -414,33 +414,20 @@ const autoSaveReport = async (req, res) => {
 const getRecentReports = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { limit = 20, status, projectId } = req.query;
-    
-    console.log("🔍 DEBUG CONTROLLER: getRecentReports called", { 
-      userId, 
-      limit: parseInt(limit), 
-      status, 
-      projectId: projectId || 'NONE',
-      projectIdType: typeof projectId,
-      fullQuery: req.query
-    });
+    const { limit = '0', page = '1', status, projectId } = req.query;
 
-    const reports = await dailyReportService.getRecentReports(
-      userId, 
-      parseInt(limit), 
+    const result = await dailyReportService.getRecentReports(
+      userId,
+      parseInt(limit),
       status,
-      projectId
+      projectId,
+      parseInt(page)
     );
-    
-    console.log("✅ DEBUG CONTROLLER: getRecentReports completed", {
-      reportsCount: reports.length,
-      reportsWithProjectId: reports.filter(r => r.projectId).length,
-      reportsWithoutProjectId: reports.filter(r => !r.projectId).length
-    });
-    
+
     res.status(200).json({
       success: true,
-      data: reports,
+      data: result.data,
+      pagination: result.pagination,
       message: "Recent reports fetched successfully",
     });
   } catch (error) {

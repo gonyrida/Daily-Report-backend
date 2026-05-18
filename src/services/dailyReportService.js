@@ -1036,69 +1036,53 @@ const autoSaveReport = async (userId, reportId, partialData) => {
 };
 
 /**
- * Get recent reports for dashboard, sorted by updatedAt
+ * Get reports for dashboard with optional pagination.
+ * limit=0 (default) fetches all matching records without a hard cap.
  */
-const getRecentReports = async (userId, limit = 20, statusFilter = null, projectId = null) => {
+const getRecentReports = async (userId, limit = 0, statusFilter = null, projectId = null, page = 1) => {
   try {
-    console.log('🔍 DEBUG getRecentReports: INPUTS', { 
-      userId, 
-      limit, 
-      statusFilter, 
-      projectId: projectId || 'NONE',
-      projectIdType: typeof projectId
-    });
-    
-    // Build query - always use userId for My Reports tab
+    // Build query - always scope to the authenticated user
     const query = { userId };
-    
+
     if (statusFilter) {
       query.status = statusFilter;
     }
-    
-    // Add projectId filter if provided (for personal reports within a project)
+
     if (projectId) {
       try {
         query.projectId = new mongoose.Types.ObjectId(projectId);
-        console.log('🔥🔥🔥 NEW CODE DEBUG getRecentReports: Using userId + projectId for personal reports', {
-          userId,
-          originalProjectId: projectId,
-          query: JSON.stringify(query, null, 2)
-        });
       } catch (error) {
-        console.error('❌ DEBUG getRecentReports: ObjectId conversion FAILED', {
-          projectId,
-          error: error.message,
-          query: JSON.stringify(query, null, 2)
-        });
-        // If invalid ObjectId, don't apply projectId filter
+        console.error('❌ getRecentReports: invalid projectId ObjectId', projectId);
+        // Skip projectId filter if conversion fails
       }
-    } else {
-      console.log('🔍 DEBUG getRecentReports: Using userId for all personal reports', {
-        query: JSON.stringify(query, null, 2)
-      });
     }
 
-    console.log('🔍 DEBUG getRecentReports: Executing MongoDB query...');
-    const reports = await DailyReport.find(query)
-      .sort({ updatedAt: -1 })
-      .limit(limit)
-      .select('projectId projectName reportDate status updatedAt createdAt submittedAt');
+    const total = await DailyReport.countDocuments(query);
 
-    console.log('✅ DEBUG getRecentReports: Query RESULTS', {
-      totalFound: reports.length,
-      reportsWithProjectId: reports.filter(r => r.projectId).length,
-      reportsWithoutProjectId: reports.filter(r => !r.projectId).length,
-      sampleReports: reports.slice(0, 3).map(r => ({
-        _id: r._id.toString(),
-        projectId: r.projectId?.toString() || 'NULL',
-        projectName: r.projectName,
-        status: r.status
-      }))
-    });
+    let queryBuilder = DailyReport.find(query)
+      .sort({ reportDate: -1, updatedAt: -1 })
+      .select('projectId projectName folderId folderName reportDate status updatedAt createdAt submittedAt userId');
 
-    return reports;
+    if (limit > 0) {
+      const skip = (page - 1) * limit;
+      queryBuilder = queryBuilder.skip(skip).limit(limit);
+    }
+
+    const reports = await queryBuilder;
+
+    return {
+      data: reports,
+      pagination: {
+        total,
+        page: limit > 0 ? page : 1,
+        limit: limit > 0 ? limit : total,
+        pages: limit > 0 ? Math.ceil(total / limit) : 1,
+        hasNext: limit > 0 ? page < Math.ceil(total / limit) : false,
+        hasPrev: limit > 0 ? page > 1 : false,
+      },
+    };
   } catch (error) {
-    console.error("DEBUG BACKEND SERVICE: Error fetching recent reports:", error);
+    console.error("Error fetching recent reports:", error);
     throw error;
   }
 };
@@ -1240,8 +1224,8 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
       projectIdFilterType: typeof projectIdFilter
     });
 
-    const skip = (page - 1) * limit;
-    
+    const skip = limit > 0 ? (page - 1) * limit : 0;
+
     // Build search query - prioritize projectId if provided
     let searchQuery;
     
@@ -1313,12 +1297,16 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
     }
     console.log('🔍 DEBUG getCompanyReports: Executing MongoDB query...');
     
+    let companyQueryBuilder = DailyReport.find(searchQuery)
+      .sort({ reportDate: -1, updatedAt: -1 })
+      .populate('userId', 'firstName lastName email');
+
+    if (limit > 0) {
+      companyQueryBuilder = companyQueryBuilder.skip(skip).limit(limit);
+    }
+
     const [reports, total] = await Promise.all([
-      DailyReport.find(searchQuery)
-        .sort({ reportDate: -1, updatedAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .populate('userId', 'firstName lastName email'),
+      companyQueryBuilder,
       DailyReport.countDocuments(searchQuery)
     ]);
     
@@ -1334,16 +1322,17 @@ const getCompanyReports = async (companyId, page = 1, limit = 20, search = "", p
       }))
     });
     
+    const effectivePages = limit > 0 ? Math.ceil(total / limit) : 1;
     return {
       success: true,
       data: reports,
       pagination: {
-        page,
-        limit,
+        page: limit > 0 ? page : 1,
+        limit: limit > 0 ? limit : total,
         total,
-        pages: Math.ceil(total / limit),
-        hasNext: page < Math.ceil(total / limit),
-        hasPrev: page > 1
+        pages: effectivePages,
+        hasNext: limit > 0 ? page < effectivePages : false,
+        hasPrev: limit > 0 ? page > 1 : false,
       }
     };
   } catch (error) {
