@@ -1319,14 +1319,14 @@ exports.getProjectPurchaseRequestsSummary = async (req, res) => {
       const filteredReports = reports.filter(r => r._id.toString() !== id);
       // Calculate actual totals for each purpose from reports
       filteredReports.forEach(report => {
-        if (report.purpose && materialsActual[report.purpose]) {
+        if (report.purpose && materialsActual[report.purpose] && report.status !== 'rejected') {
           materialsActual[report.purpose].actualTotal += (report.grandTotal || 0);
         }
       });
     } else {
       // Calculate actual totals for each purpose from reports
       reports.forEach(report => {
-        if (report.purpose && materialsActual[report.purpose]) {
+        if (report.purpose && materialsActual[report.purpose] && report.status !== 'rejected') {
           materialsActual[report.purpose].actualTotal += (report.grandTotal || 0);
         }
       });
